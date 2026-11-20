@@ -442,7 +442,7 @@ async function handleMessage(env, message) {
     return;
   }
   if (text.startsWith("/start")) return handleStart(env, chatId, userId);
-  if (text === "/language" || text === "/lang") return showLanguageSettings(env, chatId);
+  if (text === "/language" || text === "/lang") { await clearFlow(env, userId); return showLanguageSettings(env, chatId); }
   if (text.startsWith("/help") || text === "❔ Help") return showHelp(env, chatId);
 
   const menuActions = new Set(["🔎 Search movie", "📺 Search series", "📰 Cinema news", "🔥 Trending", "📚 Watchlist", "🤖 Ask AI", "🔑 My API keys", "🗂 Site metadata"]);
@@ -539,8 +539,9 @@ async function handleCallback(env, callback) {
 
   try {
     if (data === "menu") { await clearFlow(env, userId); return showMenu(env, chatId); }
-    if (data === "language") return showLanguageSettings(env, chatId);
+    if (data === "language") { await clearFlow(env, userId); return showLanguageSettings(env, chatId); }
     if (action === "lang" && (parts[1] === "fa" || parts[1] === "en")) {
+      await clearFlow(env, userId);
       const user = await getUser(env, userId);
       user.language = parts[1];
       await saveUser(env, userId, user);
