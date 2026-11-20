@@ -208,8 +208,8 @@ export async function askGemini(env, apiKey, prompt) {
 function safeGeminiErrorMessage(data = {}) {
   const raw = String(data?.error?.message || data?.message || "").trim();
   return raw
-    .replace(/\\bAIza[0-9A-Za-z_-]{20,}\\b/g, "[redacted]")
-    .replace(/\\bAQ\\.[0-9A-Za-z._-]{12,}\\b/g, "[redacted]")
+    .replace(/\bAIza[0-9A-Za-z_-]{20,}\b/g, "[redacted]")
+    .replace(/\bAQ\.[0-9A-Za-z._-]{12,}\b/g, "[redacted]")
     .slice(0, 500);
 }
 
