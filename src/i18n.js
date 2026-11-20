@@ -30,6 +30,7 @@ const translations = [
   ["Checking the key with the configured API gateway…", "در حال بررسی کلید با درگاه API تنظیم‌شده…"],
   ["Checking the key with Google…", "در حال بررسی کلید با Google…"],
   ["The configured provider rejected this key.", "سرویس‌دهنده تنظیم‌شده این کلید را نپذیرفت."],
+  ["Gemini rejected this key. Check its permissions or replace it.", "Gemini این کلید را نپذیرفت. مجوزهای آن را بررسی کنید یا کلید دیگری ثبت کنید."],
   ["The provider rate-limited the key during validation. Try later.", "سرویس‌دهنده هنگام بررسی، محدودیت درخواست برای این کلید اعمال کرد. بعداً دوباره تلاش کنید."],
   ["The bot owner has not configured AI_API_BASE_URL.", "مدیر بات مقدار AI_API_BASE_URL را تنظیم نکرده است."],
   ["The key could not be validated. Check it and try again.", "اعتبار کلید تأیید نشد. آن را بررسی و دوباره تلاش کنید."],
@@ -138,7 +139,7 @@ export function normalizeInput(value = "") {
 export function translateText(value = "", language = "en") {
   let output = String(value);
   if (language !== "fa") return output;
-  output = output.replace(/Showing (\\d+) of (\\d+) episodes\\./g, "نمایش $1 از $2 قسمت.");
+  output = output.replace(/Showing (\d+) of (\d+) episodes\./g, "نمایش $1 از $2 قسمت.");
   for (const [english, persian] of sortedTranslations) output = output.replaceAll(english, persian);
   return output;
 }
