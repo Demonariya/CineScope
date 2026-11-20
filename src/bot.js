@@ -7,6 +7,7 @@ import {
 import {
   escapeHtml, inline, keyLabel, MAIN_KEYBOARD, CANCEL_KEYBOARD, mainMenuText, shortText
 } from "./ui.js";
+import { languageFromTelegram, localizeMarkup, normalizeInput, translateText } from "./i18n.js";
 import {
   askGemini, formatTitleDetails, getSeason,
   getTitle, posterUrl, safeNewsText, searchNews, searchTitles, titleName,
@@ -20,7 +21,12 @@ function isPrivateChat(message) {
 }
 
 async function reply(env, chatId, text, markup = MAIN_KEYBOARD, options = {}) {
-  return sendMessage(env, chatId, text, markup, options);
+  let language = "en";
+  try {
+    const user = await getUser(env, chatId);
+    language = user.language === "fa" ? "fa" : "en";
+  } catch { /* Keep error replies available even when user storage is unavailable. */ }
+  return sendMessage(env, chatId, translateText(text, language), localizeMarkup(markup, language), options);
 }
 
 async function showMenu(env, chatId) {
@@ -30,6 +36,13 @@ async function showMenu(env, chatId) {
 async function handleStart(env, chatId, userId) {
   await clearFlow(env, userId);
   await showMenu(env, chatId);
+}
+
+async function showLanguageSettings(env, chatId) {
+  await reply(env, chatId, "Select language / زبان را انتخاب کنید:", inline([
+    [{ text: "🇮🇷 فارسی", callback_data: "lang:fa" }, { text: "🇬🇧 English", callback_data: "lang:en" }],
+    [{ text: "⬅️ Main menu", callback_data: "menu" }]
+  ]));
 }
 
 async function showHelp(env, chatId) {
@@ -221,7 +234,8 @@ async function aiFallbackSearch(env, chatId, userId, query, kind) {
   }
   const typeHint = kind === "movie" ? "movie" : kind === "tv" ? "TV series" : "movie or TV series";
   try {
-    const answer = await askGemini(env, key.secret, `You are CineScope, an entertainment metadata assistant. Give a cautious, concise profile for the ${typeHint} titled: ${query}. Include likely title, original title, release year, type, genres, director/creator, cast, synopsis, and seasons/episode counts only when you are confident. Mark uncertain fields as unknown. Do not invent current release news, streaming availability, or episode details. Answer in English with clear headings.`);
+    const responseLanguage = user.language === "fa" ? "Persian" : "English";
+    const answer = await askGemini(env, key.secret, `You are CineScope, an entertainment metadata assistant. Give a cautious, concise profile for the ${typeHint} titled: ${query}. Include likely title, original title, release year, type, genres, director/creator, cast, synopsis, and seasons/episode counts only when you are confident. Mark uncertain fields as unknown. Do not invent current release news, streaming availability, or episode details. Answer in ${responseLanguage} with clear headings.`);
     await reply(env, chatId, `<b>AI lookup · ${escapeHtml(query)}</b>\n${escapeHtml(shortText(answer, 3400))}\n\n<i>AI-generated; verify details against an authoritative catalog.</i>`, MAIN_KEYBOARD);
   } catch (error) {
     await handleGeminiError(env, chatId, userId, key, error);
@@ -285,10 +299,11 @@ async function showSeason(env, chatId, imdbId, seasonNumber) {
   await reply(env, chatId, lines.join("\n"), inline([[{ text: "⬅️ Back to title", callback_data: `pick:tv:${imdbId}` }, { text: "Main menu", callback_data: "menu" }]]));
 }
 
-async function showNews(env, chatId, title) {
+async function showNews(env, chatId, userId, title) {
+  const language = (await getUser(env, userId)).language || "en";
   await reply(env, chatId, `Searching recent news for <b>${escapeHtml(title)}</b>…`, MAIN_KEYBOARD);
   let items;
-  try { items = await searchNews(title); }
+  try { items = await searchNews(title, false, language); }
   catch {
     await reply(env, chatId, "The news feed is temporarily unavailable. Try again later.", MAIN_KEYBOARD);
     return;
@@ -298,7 +313,7 @@ async function showNews(env, chatId, title) {
     return;
   }
   for (const item of items.slice(0, 5)) {
-    await reply(env, chatId, safeNewsText(item), inline([[{ text: "Open article", url: item.link }]]));
+    await reply(env, chatId, safeNewsText(item, language), inline([[{ text: "Open article", url: item.link }]]));
   }
 }
 
@@ -414,7 +429,12 @@ async function handleMessage(env, message) {
   }
   const chatId = message.chat.id;
   const userId = message.from.id;
-  const text = String(message.text || "").trim();
+  const profile = await getUser(env, userId);
+  if (!profile.language) {
+    profile.language = languageFromTelegram(message.from?.language_code);
+    await saveUser(env, userId, profile);
+  }
+  const text = normalizeInput(String(message.text || "").trim());
   if (!text) return;
   if (text === "✖️ Cancel") {
     await clearFlow(env, userId);
@@ -422,6 +442,7 @@ async function handleMessage(env, message) {
     return;
   }
   if (text.startsWith("/start")) return handleStart(env, chatId, userId);
+  if (text === "/language" || text === "/lang") return showLanguageSettings(env, chatId);
   if (text.startsWith("/help") || text === "❔ Help") return showHelp(env, chatId);
 
   const menuActions = new Set(["🔎 Search movie", "📺 Search series", "📰 Cinema news", "🔥 Trending", "📚 Watchlist", "🤖 Ask AI", "🔑 My API keys", "🗂 Site metadata"]);
@@ -439,7 +460,7 @@ async function handleMessage(env, message) {
     }
     if (flow?.type === "news") {
       await clearFlow(env, userId);
-      return showNews(env, chatId, text);
+      return showNews(env, chatId, userId, text);
     }
     if (flow?.type === "source_url") return handleSourceUrl(env, chatId, userId, text, flow.expectedTitle || "");
     if (flow?.type === "ai") {
@@ -451,7 +472,8 @@ async function handleMessage(env, message) {
         return;
       }
       try {
-        const answer = await askGemini(env, key.secret, `You are CineScope, a concise movie and television assistant. Answer the user's question accurately. Do not invent current release information or streaming availability; state uncertainty clearly. User question: ${text}`);
+        const responseLanguage = user.language === "fa" ? "Persian" : "English";
+        const answer = await askGemini(env, key.secret, `You are CineScope, a concise movie and television assistant. Answer the user's question accurately in ${responseLanguage}. Do not invent current release information or streaming availability; state uncertainty clearly. User question: ${text}`);
         await reply(env, chatId, `<b>🤖 CineScope AI</b>\n${escapeHtml(shortText(answer, 3400))}`, MAIN_KEYBOARD);
       } catch (error) {
         await handleGeminiError(env, chatId, userId, key, error);
@@ -486,8 +508,9 @@ async function handleMessage(env, message) {
 }
 
 async function showTrending(env, chatId) {
+  const language = (await getUser(env, chatId)).language || "en";
   let results;
-  try { results = await searchTrendingNews(); }
+  try { results = await searchTrendingNews(language); }
   catch (error) {
     return reply(env, chatId, `Trending news is unavailable: ${escapeHtml(error.message)}`, MAIN_KEYBOARD);
   }
@@ -516,6 +539,14 @@ async function handleCallback(env, callback) {
 
   try {
     if (data === "menu") { await clearFlow(env, userId); return showMenu(env, chatId); }
+    if (data === "language") return showLanguageSettings(env, chatId);
+    if (action === "lang" && (parts[1] === "fa" || parts[1] === "en")) {
+      const user = await getUser(env, userId);
+      user.language = parts[1];
+      await saveUser(env, userId, user);
+      await reply(env, chatId, parts[1] === "fa" ? "Language updated to Persian." : "Bot language changed to English.", MAIN_KEYBOARD);
+      return showMenu(env, chatId);
+    }
     if (data === "key:list") return showKeys(env, chatId, userId);
     if (data === "key:add") return beginAddKey(env, chatId, userId);
     if (data === "key:test") return testAllKeys(env, chatId, userId);
@@ -563,7 +594,7 @@ async function handleCallback(env, callback) {
     if (data === "news:last") {
       const user = await getUser(env, userId);
       if (!user.lastTitle?.name) return reply(env, chatId, "Search for a title first.", MAIN_KEYBOARD);
-      return showNews(env, chatId, user.lastTitle.name);
+      return showNews(env, chatId, userId, user.lastTitle.name);
     }
     return reply(env, chatId, "That action is not supported. Use the menu buttons.", MAIN_KEYBOARD);
   } catch (error) {
