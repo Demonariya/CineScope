@@ -1,0 +1,446 @@
+import { escapeHtml, shortText } from "./ui.js";
+
+const OMDB_BASE = "https://www.omdbapi.com/";
+const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
+
+async function omdb(env, params = {}) {
+  if (!env.OMDB_API_KEY) {
+    throw new Error("OMDb is not configured. Add OMDB_API_KEY as a Cloudflare Worker secret.");
+  }
+  const url = new URL(OMDB_BASE);
+  url.searchParams.set("apikey", env.OMDB_API_KEY);
+  url.searchParams.set("r", "json");
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
+  }
+  const response = await fetch(url, {
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(12000)
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.Error || `OMDb request failed (${response.status})`);
+  if (data.Response === "False") {
+    const message = String(data.Error || "OMDb returned no result");
+    if (/invalid api key/i.test(message)) throw new Error("OMDb rejected OMDB_API_KEY. Check the key in Cloudflare Worker secrets.");
+    if (/request limit reached/i.test(message)) throw new Error("OMDb request limit reached. Try again later.");
+    const error = new Error(message);
+    error.code = "NOT_FOUND";
+    throw error;
+  }
+  return data;
+}
+
+export function mapOmdbSearchItem(item, kind) {
+  const title = item?.Title || "Untitled";
+  const imdbID = String(item?.imdbID || "");
+  const year = String(item?.Year || "");
+  return {
+    id: imdbID,
+    imdbID,
+    Title: title,
+    Year: year,
+    title,
+    name: title,
+    year,
+    release_date: year,
+    first_air_date: year,
+    Poster: item?.Poster || "N/A",
+    poster_path: item?.Poster && item.Poster !== "N/A" ? item.Poster : null,
+    Type: item?.Type || (kind === "tv" ? "series" : "movie"),
+    cineKind: kind
+  };
+}
+
+export function mapOmdbTitle(data, kind) {
+  const title = data?.Title || "Untitled";
+  const imdbID = String(data?.imdbID || "");
+  const genres = String(data?.Genre || "").split(",").map((name) => name.trim()).filter(Boolean);
+  const actors = String(data?.Actors || "").split(",").map((name) => name.trim()).filter(Boolean);
+  const directors = String(data?.Director || "").split(",").map((name) => name.trim()).filter(Boolean);
+  const creators = String(data?.Writer || "").split(",").map((name) => name.trim()).filter(Boolean);
+  const totalSeasons = Math.max(0, Number.parseInt(data?.totalSeasons || "0", 10) || 0);
+  return {
+    ...data,
+    id: imdbID,
+    imdbID,
+    imdbUrl: imdbID ? `https://www.imdb.com/title/${encodeURIComponent(imdbID)}/` : "",
+    title,
+    name: title,
+    original_title: title,
+    original_name: title,
+    year: String(data?.Year || ""),
+    release_date: String(data?.Released || ""),
+    first_air_date: String(data?.Released || data?.Year || ""),
+    poster_path: data?.Poster && data.Poster !== "N/A" ? data.Poster : null,
+    overview: data?.Plot && data.Plot !== "N/A" ? data.Plot : "",
+    runtime: Number.parseInt(String(data?.Runtime || "").match(/\d+/)?.[0] || "0", 10) || null,
+    genres: genres.map((name) => ({ name })),
+    credits: {
+      cast: actors.map((name) => ({ name })),
+      crew: directors.map((name) => ({ name, job: "Director" }))
+    },
+    created_by: kind === "tv" ? creators.map((name) => ({ name })) : [],
+    number_of_seasons: totalSeasons || null,
+    seasons: kind === "tv" ? Array.from({ length: Math.min(totalSeasons, 30) }, (_, index) => ({
+      season_number: index + 1,
+      name: `Season ${index + 1}`
+    })) : [],
+    status: data?.Type === "series" ? "Not reported by OMDb" : "Not reported by OMDb",
+    vote_average: Number.parseFloat(data?.imdbRating || "") || null,
+    vote_count: Number.parseInt(String(data?.imdbVotes || "").replace(/,/g, ""), 10) || 0
+  };
+}
+
+export function mapOmdbSeason(data, seasonNumber) {
+  const episodes = Array.isArray(data?.Episodes) ? data.Episodes : [];
+  return {
+    name: `Season ${seasonNumber}`,
+    season_number: Number(seasonNumber),
+    episodes: episodes.map((episode) => ({
+      episode_number: Number.parseInt(episode.Episode || "0", 10) || 0,
+      name: episode.Title || "Untitled episode",
+      air_date: episode.Released || "Date unknown",
+      imdb_rating: episode.imdbRating || "N/A",
+      imdb_id: episode.imdbID || ""
+    }))
+  };
+}
+
+export async function searchTitles(env, kind, query, page = 1) {
+  const type = kind === "tv" || kind === "series" ? "series" : "movie";
+  const data = await omdb(env, { s: query, type, page: Math.min(100, Math.max(1, page)) });
+  return (data.Search || []).map((item) => mapOmdbSearchItem(item, type === "series" ? "tv" : "movie"));
+}
+
+export async function getTitle(env, kind, id) {
+  const data = await omdb(env, { i: id, plot: "full" });
+  const actualKind = data.Type === "series" || kind === "tv" ? "tv" : "movie";
+  return mapOmdbTitle(data, actualKind);
+}
+
+export async function getSeason(env, imdbId, seasonNumber) {
+  const data = await omdb(env, { i: imdbId, Season: seasonNumber });
+  return mapOmdbSeason(data, seasonNumber);
+}
+
+function extractResponseText(data = {}) {
+  if (typeof data.output_text === "string" && data.output_text.trim()) return data.output_text;
+  const blocks = (data.output || []).flatMap((item) => item.content || []);
+  return blocks
+    .filter((item) => item.type === "output_text" || typeof item.text === "string")
+    .map((item) => item.text || "")
+    .join("\n");
+}
+
+export async function askGemini(env, apiKey, prompt) {
+  const mode = String(env.AI_API_MODE || "google").trim().toLowerCase();
+  const model = String(env.GEMINI_MODEL || "gemini-3.8-flash").trim();
+
+  if (mode === "responses") {
+    if (!env.AI_API_BASE_URL) throw new Error("AI_API_BASE_URL is required when AI_API_MODE=responses");
+    const base = String(env.AI_API_BASE_URL).replace(/\/+$/, "");
+    const response = await fetch(`${base}/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${apiKey}`,
+        accept: "text/event-stream, application/json"
+      },
+      body: JSON.stringify({ model, input: prompt, stream: true })
+    });
+    if (response.status === 429) {
+      const error = new Error("The provider rate-limited this key. Wait for its quota window to reset or select another key you own.");
+      error.code = "RATE_LIMITED";
+      throw error;
+    }
+    if (response.status === 401 || response.status === 403) {
+      const error = new Error("The provider rejected this key. Check its permissions or replace it.");
+      error.code = "INVALID_KEY";
+      throw error;
+    }
+    const raw = await response.text();
+    if (!response.ok) throw new Error(raw.slice(0, 700) || `Responses API request failed (${response.status})`);
+    let text = "";
+    if (raw.trimStart().startsWith("{")) {
+      const data = JSON.parse(raw);
+      text = extractResponseText(data);
+    } else {
+      for (const frame of raw.split(/\r?\n\r?\n/)) {
+        const dataLines = frame.split(/\r?\n/).filter((line) => line.startsWith("data:"));
+        if (!dataLines.length) continue;
+        const payload = dataLines.map((line) => line.slice(5).trim()).join("\n");
+        if (!payload || payload === "[DONE]") continue;
+        let event;
+        try { event = JSON.parse(payload); } catch { continue; }
+        if (event.type === "error" || event.type === "response.failed") {
+          throw new Error(event.error?.message || event.response?.error?.message || "Responses API stream failed.");
+        }
+        if (event.type === "response.output_text.delta" && typeof event.delta === "string") text += event.delta;
+        if (event.type === "response.completed") {
+          const completed = extractResponseText(event.response || event);
+          if (completed) text = completed;
+        }
+      }
+    }
+    text = String(text || "").trim();
+    if (!text) throw new Error("The Responses API stream completed without output text.");
+    return text;
+  }
+
+  const response = await fetch(`${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-goog-api-key": apiKey
+    },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.35, maxOutputTokens: 1400 }
+    })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 429) {
+    const error = new Error("Gemini rate limit reached for this key. Wait for its quota window to reset or select another key you own.");
+    error.code = "RATE_LIMITED";
+    throw error;
+  }
+  if (response.status === 401 || response.status === 403) {
+    const error = new Error("Gemini rejected this key. Check its permissions or replace it.");
+    error.code = "INVALID_KEY";
+    throw error;
+  }
+  if (!response.ok) throw new Error(data.error?.message || `Gemini request failed (${response.status})`);
+  const text = data.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("\n").trim();
+  if (!text) throw new Error("Gemini returned an empty response.");
+  return text;
+}
+
+export async function validateGeminiKey(apiKey, env) {
+  const mode = String(env.AI_API_MODE || "google").trim().toLowerCase();
+  let response;
+  if (mode === "responses") {
+    if (!env.AI_API_BASE_URL) return { ok: false, reason: "base_url_missing" };
+    const base = String(env.AI_API_BASE_URL).replace(/\/+$/, "");
+    response = await fetch(`${base}/models`, {
+      headers: { authorization: `Bearer ${apiKey}` }
+    });
+  } else {
+    response = await fetch(`${GEMINI_BASE}/models?pageSize=1`, {
+      headers: { "x-goog-api-key": apiKey }
+    });
+  }
+  if (response.status === 429) return { ok: false, reason: "rate_limited" };
+  if (response.status === 401 || response.status === 403) return { ok: false, reason: "invalid" };
+  if (!response.ok) return { ok: false, reason: `http_${response.status}` };
+  return { ok: true };
+}
+
+
+function decodeXml(text = "") {
+  return String(text)
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .trim();
+}
+
+export async function searchNews(title, rawQuery = false) {
+  const url = new URL("https://news.google.com/rss/search");
+  url.searchParams.set("q", rawQuery ? title : `${title} movie OR series`);
+  url.searchParams.set("hl", "en-US");
+  url.searchParams.set("gl", "US");
+  url.searchParams.set("ceid", "US:en");
+  const response = await fetch(url, {
+    headers: { accept: "application/rss+xml, application/xml, text/xml" },
+    signal: AbortSignal.timeout(12000)
+  });
+  if (!response.ok) throw new Error(`News feed request failed (${response.status})`);
+  const xml = await response.text();
+  return [...xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)].slice(0, 8).map((match) => {
+    const block = match[1];
+    const get = (tag) => decodeXml(block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\/${tag}>`, "i"))?.[1] || "");
+    return { title: get("title"), link: get("link"), pubDate: get("pubDate"), source: get("source") };
+  }).filter((item) => item.title && /^https:\/\//i.test(item.link));
+}
+
+export function formatSearchResult(item, kind) {
+  const title = item.Title || item.title || item.name;
+  const year = String(item.Year || item.year || "").slice(0, 4) || "Year unknown";
+  const type = kind === "tv" ? "Series" : "Movie";
+  return `${escapeHtml(title || "Untitled")} · ${escapeHtml(year)} · ${type}`;
+}
+
+export function formatTitleDetails(item, kind) {
+  const title = item.Title || item.title || item.name;
+  const original = item.original_title;
+  const year = item.Year || item.year || "Unknown";
+  const genres = item.Genre && item.Genre !== "N/A" ? item.Genre : (item.genres || []).map((genre) => genre.name).join(", ") || "Unknown";
+  const rating = item.imdbRating && item.imdbRating !== "N/A"
+    ? `${item.imdbRating}/10 IMDb${item.imdbVotes && item.imdbVotes !== "N/A" ? ` · ${item.imdbVotes} votes` : ""}`
+    : "Not rated";
+  const creator = kind === "movie" ? item.Director : (item.Writer || item.Director);
+  const cast = item.Actors && item.Actors !== "N/A" ? item.Actors : "Not available";
+  const overview = shortText(item.Plot && item.Plot !== "N/A" ? item.Plot : "No synopsis is available.", 950);
+  const lines = [
+    `<b>🎬 ${escapeHtml(title || "Untitled")}</b>`,
+    original && original !== title ? `Original title: ${escapeHtml(original)}` : "",
+    `Type: ${kind === "movie" ? "Movie" : "TV series"}`,
+    item.imdbID ? `IMDb ID: ${escapeHtml(item.imdbID)}` : "",
+    `Year: ${escapeHtml(year)}`,
+    kind === "movie" ? `Runtime: ${escapeHtml(item.Runtime || "Unknown")}` : `Seasons: ${escapeHtml(item.totalSeasons || item.number_of_seasons || "Unknown")}`,
+    `Genre: ${escapeHtml(genres)}`,
+    `${kind === "movie" ? "Director" : "Creator / writer"}: ${escapeHtml(creator && creator !== "N/A" ? creator : "Unknown")}`,
+    `Rating: ${escapeHtml(rating)}`,
+    `Rated: ${escapeHtml(item.Rated || "Unknown")}`,
+    `Released: ${escapeHtml(item.Released || "Unknown")}`,
+    `Country: ${escapeHtml(item.Country || "Unknown")}`,
+    `Language: ${escapeHtml(item.Language || "Unknown")}`,
+    `Cast: ${escapeHtml(cast)}`,
+    item.Awards && item.Awards !== "N/A" ? `Awards: ${escapeHtml(item.Awards)}` : "",
+    item.Metascore && item.Metascore !== "N/A" ? `Metascore: ${escapeHtml(item.Metascore)}` : "",
+    item.BoxOffice && item.BoxOffice !== "N/A" ? `Box office: ${escapeHtml(item.BoxOffice)}` : "",
+    "",
+    `<b>Plot</b>\n${escapeHtml(overview)}`,
+    item.imdbID ? `\n<a href="https://www.imdb.com/title/${escapeHtml(item.imdbID)}/">IMDb page</a>` : ""
+  ].filter(Boolean);
+  if (kind === "tv" && Number(item.totalSeasons) > 0) {
+    lines.push("", "<b>Season guide</b>", `Use a season button below to list all available episodes (OMDb reports ${escapeHtml(item.totalSeasons)} seasons).`);
+  }
+  return lines.join("\n");
+}
+
+export function posterUrl(value) {
+  return value && /^https:\/\//i.test(value) && value !== "N/A" ? value : null;
+}
+
+export function titleName(item, kind) {
+  return kind === "movie" ? item.Title || item.title || item.name : item.Title || item.name || item.title;
+}
+
+export function safeNewsText(item) {
+  return `<b>${escapeHtml(shortText(item.title, 180))}</b>\n${escapeHtml(item.source || "News source")} · ${escapeHtml(formatDateSafe(item.pubDate))}\n<a href="${escapeHtml(item.link)}">Read article</a>`;
+}
+
+function formatDateSafe(value) {
+  const date = new Date(value || "");
+  return Number.isNaN(date.getTime()) ? "Date unavailable" : date.toLocaleDateString("en-US", { dateStyle: "medium", timeZone: "UTC" });
+}
+
+const SOURCE_HOSTS = new Set(["dornatv.com", "www.dornatv.com", "movieplus.top", "www.movieplus.top", "animex.pro", "www.animex.pro"]);
+
+function decodeHtml(value = "") {
+  return String(value)
+    .replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([\da-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)))
+    .trim();
+}
+
+function metaContent(html, selector) {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const tag = new RegExp(`<meta\\b(?=[^>]*(?:name|property)=["']${escaped}["'])[^>]*>`, "i").exec(html)?.[0] || "";
+  return decodeHtml(tag.match(/\bcontent=["']([^"']*)["']/i)?.[1] || "");
+}
+
+function flattenJsonLd(value) {
+  if (Array.isArray(value)) return value.flatMap(flattenJsonLd);
+  if (!value || typeof value !== "object") return [];
+  const graph = Array.isArray(value["@graph"]) ? value["@graph"].flatMap(flattenJsonLd) : [];
+  return [value, ...graph];
+}
+
+function validateSourceUrl(url) {
+  if (url.protocol !== "https:" || !SOURCE_HOSTS.has(url.hostname.toLowerCase()) || (url.port && url.port !== "443")) {
+    throw new Error("Only HTTPS detail pages from dornatv.com, movieplus.top, or animex.pro are supported.");
+  }
+  if (url.username || url.password) throw new Error("URLs containing credentials are not allowed.");
+}
+
+async function fetchSourcePage(startUrl) {
+  let current = startUrl;
+  for (let hop = 0; hop <= 2; hop += 1) {
+    const response = await fetch(current, {
+      method: "GET",
+      redirect: "manual",
+      headers: { accept: "text/html,application/xhtml+xml" },
+      signal: AbortSignal.timeout(10000)
+    });
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      const location = response.headers.get("location");
+      if (!location || hop === 2) throw new Error("The source page redirected too many times.");
+      const next = new URL(location, current);
+      validateSourceUrl(next);
+      current = next;
+      continue;
+    }
+    return { response, url: current };
+  }
+  throw new Error("The source page could not be loaded safely.");
+}
+
+export async function getSourceMetadata(rawUrl) {
+  let url;
+  try { url = new URL(String(rawUrl || "").trim()); }
+  catch { throw new Error("Send a valid HTTPS page URL from one of the supported sites."); }
+  validateSourceUrl(url);
+  const { response, url: finalUrl } = await fetchSourcePage(url);
+  if (!response.ok) throw new Error(`Source page request failed (${response.status}).`);
+  const declaredLength = Number(response.headers.get("content-length") || 0);
+  if (declaredLength > 2_000_000) throw new Error("The source page is larger than the 2 MB metadata limit.");
+  const contentType = response.headers.get("content-type") || "";
+  if (!/text\/html|application\/xhtml\+xml/i.test(contentType)) throw new Error("The supplied URL did not return an HTML page.");
+  const html = (await response.text()).slice(0, 2_000_000);
+  const ldBlocks = [...html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)];
+  const candidates = [];
+  for (const match of ldBlocks) {
+    try { candidates.push(...flattenJsonLd(JSON.parse(match[1].trim()))); } catch { /* Skip malformed structured metadata. */ }
+  }
+  const structured = candidates.find((item) => {
+    const type = Array.isArray(item["@type"]) ? item["@type"].join(" ") : String(item["@type"] || "");
+    return /Movie|TVSeries|TVEpisode|CreativeWork/i.test(type) && (item.name || item.headline);
+  }) || {};
+  const pickText = (value) => typeof value === "string" ? value : value?.name || "";
+  const actorNames = Array.isArray(structured.actor) ? structured.actor.map(pickText).filter(Boolean).slice(0, 8) : [];
+  const genres = Array.isArray(structured.genre) ? structured.genre.map(pickText).filter(Boolean) : structured.genre ? [pickText(structured.genre)] : [];
+  const title = pickText(structured.name || structured.headline) || metaContent(html, "og:title") || decodeHtml(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "");
+  const description = pickText(structured.description) || metaContent(html, "og:description") || metaContent(html, "description");
+  const imageValue = structured.image?.url || structured.image?.[0]?.url || (typeof structured.image === "string" ? structured.image : "") || metaContent(html, "og:image");
+  const rating = structured.aggregateRating?.ratingValue || "";
+  const ratingCount = structured.aggregateRating?.ratingCount || structured.aggregateRating?.reviewCount || "";
+  return {
+    title: shortText(title, 200),
+    description: shortText(description, 1200),
+    image: /^https:\/\//i.test(imageValue) ? imageValue : "",
+    date: pickText(structured.datePublished || structured.dateCreated || structured.dateModified) || metaContent(html, "article:published_time"),
+    genres: genres.slice(0, 8),
+    actors: actorNames,
+    director: Array.isArray(structured.director) ? structured.director.map(pickText).filter(Boolean).join(", ") : pickText(structured.director),
+    rating: rating ? `${rating}${ratingCount ? ` (${ratingCount})` : ""}` : "",
+    pageUrl: finalUrl.href
+  };
+}
+
+export function formatSourceMetadata(item, expectedTitle = "") {
+  const lines = [
+    `<b>🗂 Source-page metadata</b>`,
+    `Site title: ${escapeHtml(item.title || "Not exposed by page")}`,
+    item.date ? `Date: ${escapeHtml(item.date)}` : "",
+    item.genres?.length ? `Genres: ${escapeHtml(item.genres.join(", "))}` : "",
+    item.director ? `Director: ${escapeHtml(item.director)}` : "",
+    item.actors?.length ? `Cast: ${escapeHtml(item.actors.join(", "))}` : "",
+    item.rating ? `Rating: ${escapeHtml(item.rating)}` : "",
+    "",
+    item.description ? `<b>Description</b>\n${escapeHtml(item.description)}` : "No structured synopsis was found on this page.",
+    expectedTitle ? `\nRequested title: ${escapeHtml(expectedTitle)}` : "",
+    `\n<a href="${escapeHtml(item.pageUrl)}">Open the source page</a>`
+  ].filter(Boolean);
+  return lines.join("\n");
+}
+
+export async function searchTrendingNews() {
+  return searchNews("trending movies OR trending TV series OR film box office OR new trailers", true);
+}
