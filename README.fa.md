@@ -132,6 +132,7 @@ npm run dev
 
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
+- `CINE_KV_NAMESPACE_ID` (شناسه ۳۲ کاراکتری Namespace فعلی `CINE_KV` در Cloudflare)
 
 Workflow قبل از Deploy، بررسی نحوی و تست‌ها را اجرا می‌کند. Secretهای Worker را جداگانه در Wrangler یا Cloudflare Dashboard تنظیم کن؛ آن‌ها داخل GitHub Actions کپی نمی‌شوند.
 
