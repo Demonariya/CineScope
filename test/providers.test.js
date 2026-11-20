@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   mapOmdbSearchItem, mapOmdbTitle, mapOmdbSeason,
-  searchTitles, getTitle, getSeason, getSourceMetadata
+  searchTitles, getTitle, getSeason, getSourceMetadata, validateGeminiKey
 } from "../src/providers.js";
 
 test("maps OMDb search results to IMDb IDs and bot kinds", () => {
@@ -120,6 +120,72 @@ test("rejects source-page redirects to hosts outside the allowlist", async () =>
       () => getSourceMetadata("https://dornatv.com/sample-film/"),
       /Only HTTPS detail pages/
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+
+test("validates a Gemini key by calling generateContent rather than models.list", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestedUrl;
+  let requestOptions;
+  globalThis.fetch = async (input, options) => {
+    requestedUrl = String(input);
+    requestOptions = options;
+    return new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: "OK" }] } }]
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    const result = await validateGeminiKey("test-gemini-key", { GEMINI_MODEL: "gemini-test-model" });
+    assert.deepEqual(result, { ok: true });
+    assert.match(requestedUrl, /models\/gemini-test-model:generateContent$/);
+    assert.equal(requestOptions.headers["x-goog-api-key"], "test-gemini-key");
+    assert.equal(JSON.parse(requestOptions.body).generationConfig.maxOutputTokens, 8);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("distinguishes a project-level Gemini denial from an invalid API key", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    error: { code: 403, status: "PERMISSION_DENIED", message: "Your project has been denied access. Please contact support." }
+  }), { status: 403, headers: { "content-type": "application/json" } });
+  try {
+    const result = await validateGeminiKey("test-gemini-key", {});
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "project_denied");
+    assert.match(result.message, /project has been denied access/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("reports invalid Gemini API keys separately", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    error: { code: 400, status: "INVALID_ARGUMENT", message: "API key not valid. Please pass a valid API key.", details: [{ reason: "API_KEY_INVALID" }] }
+  }), { status: 400, headers: { "content-type": "application/json" } });
+  try {
+    const result = await validateGeminiKey("test-gemini-key", {});
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "invalid_key");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("reports unavailable Gemini model separately", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    error: { code: 404, status: "NOT_FOUND", message: "Model not found." }
+  }), { status: 404, headers: { "content-type": "application/json" } });
+  try {
+    const result = await validateGeminiKey("test-gemini-key", {});
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "model_unavailable");
   } finally {
     globalThis.fetch = originalFetch;
   }
