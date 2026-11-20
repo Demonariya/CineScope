@@ -6,7 +6,7 @@ workers_dev = true
 [vars]
 AI_API_MODE = "google"
 AI_API_BASE_URL = ""
-GEMINI_MODEL = "gemini-3.8-flash"
+GEMINI_MODEL = "gemini-4-hydrogen"
 MAX_USER_KEYS = "5"
 MAX_WATCHLIST_ITEMS = "30"
 
