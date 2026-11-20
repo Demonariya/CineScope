@@ -37,7 +37,7 @@ const translations = [
   ["✅ API key validated and saved in encrypted storage.", "✅ کلید API تأیید و به‌صورت رمزنگاری‌شده ذخیره شد."],
   ["Status: ", "وضعیت: "], ["Active: ", "فعال: "], ["Added: ", "زمان افزودن: "],
   ["Rate limited", "محدودشده از نظر تعداد درخواست"], ["Invalid / rejected", "نامعتبر / ردشده"],
-  ["Ready", "آماده"], ["Yes", "بله"], ["No", "خیر"], ["Key not found.", "کلید پیدا نشد."],
+  ["Ready", "آماده"], ["Active: Yes", "فعال: بله"], ["Active: No", "فعال: خیر"], ["Key not found.", "کلید پیدا نشد."],
   ["Key test results", "نتیجه آزمایش کلیدها"],
   ["OMDb is not configured by the bot owner. I can provide an approximate AI-only lookup instead.", "مدیر بات OMDb را تنظیم نکرده است. در عوض می‌توان جست‌وجوی تقریبی مبتنی بر هوش مصنوعی انجام داد."],
   ["Searching OMDb for ", "در حال جست‌وجو در OMDb برای "], ["OMDb results for ", "نتایج OMDb برای "],
@@ -75,24 +75,24 @@ const translations = [
   ["Search for a title first.", "ابتدا یک عنوان جست‌وجو کنید."],
   ["That action is not supported. Use the menu buttons.", "این عملیات پشتیبانی نمی‌شود. از دکمه‌های منو استفاده کنید."],
   ["Could not complete that action: ", "انجام این عملیات ممکن نشد: "],
-  ["Original title:", "عنوان اصلی:"], ["Type:", "نوع:"], ["Movie", "فیلم"], ["TV series", "سریال"],
+  ["Original title:", "عنوان اصلی:"], ["Type: Movie", "نوع: فیلم"], ["Type: TV series", "نوع: سریال"], ["Type:", "نوع:"],
   ["IMDb ID:", "شناسه IMDb:"], ["Year:", "سال:"], ["Runtime:", "مدت زمان:"], ["Seasons:", "فصل‌ها:"],
-  ["Genre:", "ژانر:"], ["Director", "کارگردان"], ["Creator / writer", "سازنده / نویسنده"],
+  ["Genre:", "ژانر:"], ["Director: ", "کارگردان: "], ["Creator / writer: ", "سازنده / نویسنده: "],
   ["Rating:", "امتیاز:"], ["Not rated", "بدون امتیاز"], ["Rated:", "رده‌بندی سنی:"],
   ["Released:", "تاریخ انتشار:"], ["Country:", "کشور:"], ["Language:", "زبان:"], ["Cast:", "بازیگران:"],
   ["Awards:", "جوایز:"], ["Metascore:", "امتیاز متاسکور:"], ["Box office:", "فروش گیشه:"],
   ["Plot", "خلاصه داستان"], ["Season guide", "راهنمای فصل‌ها"],
   ["Use a season button below to list all available episodes", "برای مشاهده قسمت‌های موجود، دکمه فصل موردنظر را در پایین انتخاب کنید"],
-  [" seasons).", " فصل)."], ["Unknown", "نامشخص"], ["Untitled", "بدون عنوان"],
+  [" seasons).", " فصل)."], ["(OMDb reports ", "(OMDb تعداد "], ["Unknown", "نامشخص"], ["Untitled", "بدون عنوان"],
   ["Not available", "در دسترس نیست"], ["No synopsis is available.", "خلاصه داستانی در دسترس نیست."],
   ["Year unknown", "سال نامشخص"], ["Episodes:", "قسمت‌ها:"], ["Date unknown", "تاریخ نامشخص"],
-  ["Showing ", "نمایش "], [" of ", " از "], [" episodes.", " قسمت."],
+  ["Season ", "فصل "],
   ["Source-page metadata", "اطلاعات صفحه منبع"], ["Site title:", "عنوان سایت:"], ["Date:", "تاریخ:"],
   ["Genres:", "ژانرها:"], ["Description", "توضیحات"], ["No structured synopsis was found on this page.", "خلاصه داستان ساختاریافته‌ای در این صفحه پیدا نشد."],
   ["Requested title:", "عنوان درخواستی:"], ["Not exposed by page", "در صفحه ارائه نشده است"],
   ["Open the source page", "باز کردن صفحه منبع"], ["Date unavailable", "تاریخ در دسترس نیست"],
   ["News source", "منبع خبر"], ["Read article", "خواندن مقاله"],
-  ["Limited", "محدود"], ["Invalid", "نامعتبر"], ["ACTIVE", "فعال"], ["valid", "معتبر"],
+  ["Limited", "محدود"], ["Invalid", "نامعتبر"], ["ACTIVE", "فعال"], ["valid", "معتبر"], ["IMDb page", "صفحه IMDb"],
   ["Manage keys", "مدیریت کلیدها"], ["Add API key", "افزودن کلید API"],
   ["Add AI API key", "افزودن کلید API هوش مصنوعی"], ["Test all keys", "آزمایش همه کلیدها"],
   ["Refresh key list", "تازه‌سازی فهرست کلیدها"], ["Try again", "تلاش دوباره"], ["My keys", "کلیدهای من"],
@@ -104,8 +104,7 @@ const translations = [
   ["Ask AI", "پرسش از هوش مصنوعی"], ["My API keys", "کلیدهای API من"],
   ["Site metadata", "اطلاعات سایت"], ["Help", "راهنما"], ["Cancel", "لغو"],
   ["Send a movie or series title…", "نام فیلم یا سریال را ارسال کنید…"],
-  ["Language", "زبان"], ["English", "انگلیسی"], ["Persian", "فارسی"],
-  ["Select language / زبان را انتخاب کنید:", "زبان را انتخاب کنید / Select your language:"],
+  ["Select language / زبان را انتخاب کنید:", "زبان موردنظر را انتخاب کنید:"],
   ["Language updated to Persian.", "زبان بات به فارسی تغییر کرد."],
   ["Bot language changed to English.", "زبان بات به انگلیسی تغییر کرد."]
 ];
@@ -129,6 +128,7 @@ export function normalizeInput(value = "") {
     ["🗂 اطلاعات سایت", "🗂 Site metadata"],
     ["🌐 Language / زبان", "/language"],
     ["🌐 زبان", "/language"],
+    ["🌐 زبان / زبان", "/language"],
     ["❔ راهنما", "❔ Help"],
     ["✖️ لغو", "✖️ Cancel"]
   ]);
@@ -138,16 +138,20 @@ export function normalizeInput(value = "") {
 export function translateText(value = "", language = "en") {
   let output = String(value);
   if (language !== "fa") return output;
+  output = output.replace(/Showing (\\d+) of (\\d+) episodes\\./g, "نمایش $1 از $2 قسمت.");
   for (const [english, persian] of sortedTranslations) output = output.replaceAll(english, persian);
   return output;
 }
 
 export function localizeMarkup(markup, language = "en") {
   if (!markup || language !== "fa") return markup;
-  const translateButton = (button) => ({
-    ...button,
-    ...(typeof button.text === "string" ? { text: translateText(button.text, language) } : {})
-  });
+  const translateButton = (button) => {
+    let text = button.text;
+    if (text === "🌐 Language / زبان") text = "🌐 زبان";
+    else if (text === "🇬🇧 English") text = "🇬🇧 انگلیسی";
+    else if (typeof text === "string") text = translateText(text, language);
+    return { ...button, ...(typeof text === "string" ? { text } : {}) };
+  };
   const result = { ...markup };
   if (Array.isArray(markup.keyboard)) result.keyboard = markup.keyboard.map((row) => row.map(translateButton));
   if (Array.isArray(markup.inline_keyboard)) result.inline_keyboard = markup.inline_keyboard.map((row) => row.map(translateButton));
