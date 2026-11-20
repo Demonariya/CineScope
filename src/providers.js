@@ -134,7 +134,7 @@ function extractResponseText(data = {}) {
 
 export async function askGemini(env, apiKey, prompt) {
   const mode = String(env.AI_API_MODE || "google").trim().toLowerCase();
-  const model = String(env.GEMINI_MODEL || "gemini-3.8-flash").trim();
+  const model = String(env.GEMINI_MODEL || "gemini-4-hydrogen").trim();
 
   if (mode === "responses") {
     if (!env.AI_API_BASE_URL) throw new Error("AI_API_BASE_URL is required when AI_API_MODE=responses");
@@ -195,47 +195,67 @@ export async function askGemini(env, apiKey, prompt) {
     },
     body: JSON.stringify({
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.35, maxOutputTokens: 1400 }
+      generationConfig: { maxOutputTokens: 1400 }
     })
   });
   const data = await response.json().catch(() => ({}));
-  if (response.status === 429) {
-    const error = new Error("Gemini rate limit reached for this key. Wait for its quota window to reset or select another key you own.");
-    error.code = "RATE_LIMITED";
-    throw error;
-  }
-  if (response.status === 401 || response.status === 403) {
-    const error = new Error("Gemini rejected this key. Check its permissions or replace it.");
-    error.code = "INVALID_KEY";
-    throw error;
-  }
-  if (!response.ok) throw new Error(data.error?.message || `Gemini request failed (${response.status})`);
+  if (!response.ok) throw createGeminiRequestError(response.status, data);
   const text = data.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("\n").trim();
   if (!text) throw new Error("Gemini returned an empty response.");
   return text;
 }
 
+function safeGeminiErrorMessage(data = {}) {
+  const raw = String(data?.error?.message || data?.message || "").trim();
+  return raw
+    .replace(/\\bAIza[0-9A-Za-z_-]{20,}\\b/g, "[redacted]")
+    .replace(/\\bAQ\\.[0-9A-Za-z._-]{12,}\\b/g, "[redacted]")
+    .slice(0, 500);
+}
+
 function classifyGeminiFailure(status, data = {}) {
-  const message = String(data?.error?.message || data?.message || "").trim();
+  const message = safeGeminiErrorMessage(data);
   const details = Array.isArray(data?.error?.details) ? data.error.details : [];
   const reasons = details.map((item) => String(item?.reason || "")).filter(Boolean);
   const diagnostic = (reasons.join(" ") + " " + message).toLowerCase();
 
   if (status === 429) return { ok: false, reason: "rate_limited", status, message };
-  if (status === 401 || /api_key_invalid|api_key_expired|api key not valid/.test(diagnostic)) {
-    return { ok: false, reason: "invalid_key", status, message };
+  if (/access_token_type_unsupported/.test(diagnostic)) {
+    return { ok: false, reason: "auth_key_rejected", status, message };
+  }
+  if (/api_key_service_blocked|requests to this api .*blocked/.test(diagnostic)) {
+    return { ok: false, reason: "api_restricted", status, message };
   }
   if (/your project has been denied access|project.{0,40}(denied|restricted)/.test(diagnostic)) {
     return { ok: false, reason: "project_denied", status, message };
   }
-  if (/api_key_service_blocked|requests to this api .*blocked/.test(diagnostic)) {
-    return { ok: false, reason: "api_restricted", status, message };
+  if (/api_key_invalid|api_key_expired|api key not valid/.test(diagnostic) || status === 401) {
+    return { ok: false, reason: "invalid_key", status, message };
   }
   if (status === 403) return { ok: false, reason: "permission_denied", status, message };
   if (status === 404 || /model .*not found|not supported for generatecontent/.test(diagnostic)) {
     return { ok: false, reason: "model_unavailable", status, message };
   }
   return { ok: false, reason: `http_${status}`, status, message };
+}
+
+function createGeminiRequestError(status, data = {}) {
+  const failure = classifyGeminiFailure(status, data);
+  const codeMap = {
+    rate_limited: "RATE_LIMITED",
+    invalid_key: "INVALID_KEY",
+    auth_key_rejected: "AUTH_KEY_REJECTED",
+    api_restricted: "PERMISSION_DENIED",
+    project_denied: "PROJECT_DENIED",
+    permission_denied: "PERMISSION_DENIED",
+    model_unavailable: "MODEL_UNAVAILABLE"
+  };
+  const message = failure.message || `Gemini API request failed (HTTP ${status}).`;
+  const error = new Error(`${message} (HTTP ${status})`);
+  error.code = codeMap[failure.reason] || "GEMINI_API_ERROR";
+  error.providerReason = failure.reason;
+  error.status = status;
+  return error;
 }
 
 export async function validateGeminiKey(apiKey, env) {
@@ -255,13 +275,13 @@ export async function validateGeminiKey(apiKey, env) {
 
   // Test the real generation endpoint. models.list can succeed even when
   // the Google project is not permitted to call generateContent.
-  const model = String(env.GEMINI_MODEL || "gemini-3.8-flash").trim();
+  const model = String(env.GEMINI_MODEL || "gemini-4-hydrogen").trim();
   const response = await fetch(`${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
     body: JSON.stringify({
       contents: [{ role: "user", parts: [{ text: "Reply with OK." }] }],
-      generationConfig: { maxOutputTokens: 8, temperature: 0 }
+      generationConfig: { maxOutputTokens: 8 }
     })
   });
   const data = await response.json().catch(() => ({}));
