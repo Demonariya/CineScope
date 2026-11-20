@@ -281,7 +281,7 @@ export async function validateGeminiKey(apiKey, env) {
     headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
     body: JSON.stringify({
       contents: [{ role: "user", parts: [{ text: "Reply with OK." }] }],
-      generationConfig: { maxOutputTokens: 8 }
+      generationConfig: { maxOutputTokens: 128 }
     })
   });
   const data = await response.json().catch(() => ({}));
