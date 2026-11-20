@@ -143,6 +143,7 @@ test("validates a Gemini key by calling generateContent rather than models.list"
     assert.match(requestedUrl, /models\/gemini-test-model:generateContent$/);
     assert.equal(requestOptions.headers["x-goog-api-key"], "test-gemini-key");
     assert.equal(JSON.parse(requestOptions.body).generationConfig.maxOutputTokens, 8);
+    assert.equal("temperature" in JSON.parse(requestOptions.body).generationConfig, false);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -186,6 +187,64 @@ test("reports unavailable Gemini model separately", async () => {
     const result = await validateGeminiKey("test-gemini-key", {});
     assert.equal(result.ok, false);
     assert.equal(result.reason, "model_unavailable");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+
+test("defaults Gemini validation to the Gemini 4 Hydrogen model", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestedUrl;
+  globalThis.fetch = async (input) => {
+    requestedUrl = String(input);
+    return new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: "OK" }] } }]
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    const result = await validateGeminiKey("test-gemini-key", {});
+    assert.deepEqual(result, { ok: true });
+    assert.match(requestedUrl, /models\/gemini-4-hydrogen:generateContent$/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("distinguishes an authorization-key type error from an invalid key", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    error: {
+      code: 401,
+      status: "UNAUTHENTICATED",
+      message: "API key not valid. Please pass a valid API key.",
+      details: [{ reason: "ACCESS_TOKEN_TYPE_UNSUPPORTED" }]
+    }
+  }), { status: 401, headers: { "content-type": "application/json" } });
+  try {
+    const result = await validateGeminiKey("test-gemini-key", {});
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "auth_key_rejected");
+    assert.equal(result.status, 401);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("classifies Gemini API key restrictions separately", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    error: {
+      code: 403,
+      status: "PERMISSION_DENIED",
+      message: "Requests to this API are blocked.",
+      details: [{ reason: "API_KEY_SERVICE_BLOCKED" }]
+    }
+  }), { status: 403, headers: { "content-type": "application/json" } });
+  try {
+    const result = await validateGeminiKey("test-gemini-key", {});
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "api_restricted");
   } finally {
     globalThis.fetch = originalFetch;
   }
