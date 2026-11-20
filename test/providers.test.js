@@ -142,7 +142,7 @@ test("validates a Gemini key by calling generateContent rather than models.list"
     assert.deepEqual(result, { ok: true });
     assert.match(requestedUrl, /models\/gemini-test-model:generateContent$/);
     assert.equal(requestOptions.headers["x-goog-api-key"], "test-gemini-key");
-    assert.equal(JSON.parse(requestOptions.body).generationConfig.maxOutputTokens, 8);
+    assert.equal(JSON.parse(requestOptions.body).generationConfig.maxOutputTokens, 128);
     assert.equal("temperature" in JSON.parse(requestOptions.body).generationConfig, false);
   } finally {
     globalThis.fetch = originalFetch;
