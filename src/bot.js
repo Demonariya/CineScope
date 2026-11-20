@@ -161,7 +161,7 @@ async function keyInfo(env, chatId, userId, keyId) {
   const key = user.keys.find((item) => item.id === keyId);
   if (!key) return showKeys(env, chatId, userId);
   const active = user.activeKeyId === keyId;
-  const status = key.status === "rate_limited" ? "Rate limited" : key.status === "invalid" ? "Invalid / rejected" : key.status === "permission_denied" ? "Permission denied" : "Ready";
+  const status = key.status === "rate_limited" ? "محدودیت تعداد درخواست" : key.status === "invalid" ? "نامعتبر یا ردشده" : key.status === "permission_denied" ? "عدم دسترسی" : "آماده";
   const rows = [];
   if (!active) rows.push([{ text: "✅ Set as active", callback_data: `key:on:${keyId}` }]);
   rows.push([{ text: "🧪 Test this key", callback_data: `key:check:${keyId}` }]);
@@ -173,11 +173,12 @@ async function keyInfo(env, chatId, userId, keyId) {
 async function testOneKey(env, userId, keyId) {
   const user = await getUser(env, userId);
   const key = user.keys.find((item) => item.id === keyId);
-  if (!key) return "Key not found.";
+  if (!key) return "کلید پیدا نشد.";
   const result = await validateGeminiKey(key.secret, env);
   key.status = result.ok ? "ready" : result.reason === "invalid_key" ? "invalid" : result.reason === "rate_limited" ? "rate_limited" : ["auth_key_rejected", "api_restricted", "project_denied", "permission_denied"].includes(result.reason) ? "permission_denied" : "unknown";
   await saveUser(env, userId, user);
-  return result.ok ? `${key.label}: ✅ valid` : `${key.label}: ⚠️ ${key.status}`;
+  const status = result.ok ? "✅ معتبر" : key.status === "rate_limited" ? "⏳ محدودیت درخواست" : key.status === "invalid" ? "⚠️ نامعتبر" : key.status === "permission_denied" ? "⛔ بدون دسترسی" : "⚠️ نامشخص";
+  return `${key.label}: ${status}`;
 }
 
 async function testAllKeys(env, chatId, userId) {
@@ -188,7 +189,8 @@ async function testAllKeys(env, chatId, userId) {
   for (const key of user.keys) {
     const result = await validateGeminiKey(key.secret, env);
     key.status = result.ok ? "ready" : result.reason === "invalid_key" ? "invalid" : result.reason === "rate_limited" ? "rate_limited" : ["auth_key_rejected", "api_restricted", "project_denied", "permission_denied"].includes(result.reason) ? "permission_denied" : "unknown";
-    results.push(`${escapeHtml(key.label)} — ${result.ok ? "✅ valid" : `⚠️ ${key.status}`}`);
+    const state = result.ok ? "✅ معتبر" : key.status === "rate_limited" ? "⏳ محدودیت درخواست" : key.status === "invalid" ? "⚠️ نامعتبر" : key.status === "permission_denied" ? "⛔ بدون دسترسی" : "⚠️ نامشخص";
+    results.push(`${escapeHtml(key.label)} — ${state}`);
   }
   await saveUser(env, userId, user);
   await reply(env, chatId, `<b>Key test results</b>\n${results.join("\n")}`, inline([[{ text: "Manage keys", callback_data: "key:list" }]]));
@@ -305,7 +307,7 @@ async function showSeason(env, chatId, imdbId, seasonNumber) {
   const season = await getSeason(env, imdbId, seasonNumber);
   const user = await getUser(env, chatId);
   const rawSeasonName = season.name || `Season ${seasonNumber}`;
-  const seasonName = user.language === "fa" ? rawSeasonName.replace(/^Season (?=\d+$)/i, "فصل ") : rawSeasonName;
+  const seasonName = rawSeasonName.replace(/^Season (?=\d+$)/i, "فصل ");
   const episodes = season.episodes || [];
   const visibleEpisodes = episodes.slice(0, 14);
   const lines = [
@@ -403,9 +405,10 @@ async function handleSourceUrl(env, chatId, userId, rawUrl, expectedTitle = "") 
       [{ text: "⬅️ Main menu", callback_data: "menu" }]
     ]));
   } catch (error) {
-    await reply(env, chatId, `Could not read source metadata: ${escapeHtml(error.message)}`, inline([
-      [{ text: "Try again", callback_data: "source:menu" }],
-      [{ text: "Main menu", callback_data: "menu" }]
+    console.error("Source metadata lookup failed", error.message);
+    await reply(env, chatId, "خواندن اطلاعات صفحه منبع ممکن نشد. نشانی را بررسی کنید یا بعداً دوباره تلاش کنید.", inline([
+      [{ text: "تلاش دوباره", callback_data: "source:menu" }],
+      [{ text: "منوی اصلی", callback_data: "menu" }]
     ]));
   }
 }
@@ -455,14 +458,14 @@ async function handleMessage(env, message) {
   }
   const text = normalizeInput(String(message.text || "").trim());
   if (!text) return;
-  if (text === "✖️ Cancel") {
+  if (text === "✖️ Cancel" || text === "✖️ لغو") {
     await clearFlow(env, userId);
     await showMenu(env, chatId);
     return;
   }
   if (text.startsWith("/start")) return handleStart(env, chatId, userId);
   if (text === "/language" || text === "/lang") { await clearFlow(env, userId); return showLanguageSettings(env, chatId); }
-  if (text.startsWith("/help") || text === "❔ Help") return showHelp(env, chatId);
+  if (text.startsWith("/help") || text === "❔ Help" || text === "❔ راهنما") return showHelp(env, chatId);
 
   const menuActions = new Set(["🔎 Search movie", "📺 Search series", "📰 Cinema news", "🔥 Trending", "📚 Watchlist", "🤖 Ask AI", "🔑 My API keys", "🗂 Site metadata"]);
   const flow = await getFlow(env, userId);
@@ -619,7 +622,7 @@ async function handleCallback(env, callback) {
     return reply(env, chatId, "That action is not supported. Use the menu buttons.", MAIN_KEYBOARD);
   } catch (error) {
     console.error("Callback handler error", { action, message: error.message });
-    await reply(env, chatId, `Could not complete that action: ${escapeHtml(error.message)}`, MAIN_KEYBOARD);
+    await reply(env, chatId, "انجام این عملیات ممکن نشد. لطفاً دوباره تلاش کنید یا به منوی اصلی برگردید.", MAIN_KEYBOARD);
   }
 }
 
