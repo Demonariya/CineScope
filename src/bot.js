@@ -134,6 +134,7 @@ async function handleIncomingKey(env, message, userId, chatId) {
   if (!validation.ok) {
     const messages = {
       invalid_key: "Google says this API key is invalid or revoked. Check that it was copied completely and is active in the provider dashboard.",
+      auth_key_rejected: "Google returned ACCESS_TOKEN_TYPE_UNSUPPORTED for this authorization key. CineScope sends the key with x-goog-api-key. Confirm the key is active in Google AI Studio; if a new AQ key still returns 401, it may be a Google-side key provisioning issue.",
       project_denied: "Google authenticated the request but denied generation access for this project. Check the project's availability and eligibility in Google AI Studio / Cloud Console.",
       api_restricted: "This API key is restricted from using the Gemini API. Check the API restrictions attached to the key.",
       permission_denied: "Google returned a permission error for this generation request. Check the project's Gemini API access and model eligibility.",
@@ -143,7 +144,7 @@ async function handleIncomingKey(env, message, userId, chatId) {
       empty_response: "Gemini accepted the request but returned no text.",
     };
     const reason = messages[validation.reason] || `The provider validation failed${validation.status ? ` (HTTP ${validation.status})` : ""}.`;
-    const detail = validation.message ? `\\nGoogle response: ${shortText(validation.message, 350)}` : "";
+    const detail = validation.message ? `\nGoogle response: ${shortText(validation.message, 350)}` : "";
     await reply(env, chatId, `${reason}${detail} It has not been stored.`, inline([[{ text: "Try again", callback_data: "key:add" }, { text: "My keys", callback_data: "key:list" }]]));
     return;
   }
@@ -166,7 +167,7 @@ async function keyInfo(env, chatId, userId, keyId) {
   const key = user.keys.find((item) => item.id === keyId);
   if (!key) return showKeys(env, chatId, userId);
   const active = user.activeKeyId === keyId;
-  const status = key.status === "rate_limited" ? "Rate limited" : key.status === "invalid" ? "Invalid / rejected" : "Ready";
+  const status = key.status === "rate_limited" ? "Rate limited" : key.status === "invalid" ? "Invalid / rejected" : key.status === "permission_denied" ? "Permission denied" : "Ready";
   const rows = [];
   if (!active) rows.push([{ text: "✅ Set as active", callback_data: `key:on:${keyId}` }]);
   rows.push([{ text: "🧪 Test this key", callback_data: `key:check:${keyId}` }]);
@@ -180,7 +181,7 @@ async function testOneKey(env, userId, keyId) {
   const key = user.keys.find((item) => item.id === keyId);
   if (!key) return "Key not found.";
   const result = await validateGeminiKey(key.secret, env);
-  key.status = result.ok ? "ready" : result.reason === "invalid" ? "invalid" : result.reason === "rate_limited" ? "rate_limited" : "unknown";
+  key.status = result.ok ? "ready" : result.reason === "invalid_key" ? "invalid" : result.reason === "rate_limited" ? "rate_limited" : ["auth_key_rejected", "api_restricted", "project_denied", "permission_denied"].includes(result.reason) ? "permission_denied" : "unknown";
   await saveUser(env, userId, user);
   return result.ok ? `${key.label}: ✅ valid` : `${key.label}: ⚠️ ${key.status}`;
 }
@@ -192,7 +193,7 @@ async function testAllKeys(env, chatId, userId) {
   const results = [];
   for (const key of user.keys) {
     const result = await validateGeminiKey(key.secret, env);
-    key.status = result.ok ? "ready" : result.reason === "invalid" ? "invalid" : result.reason === "rate_limited" ? "rate_limited" : "unknown";
+    key.status = result.ok ? "ready" : result.reason === "invalid_key" ? "invalid" : result.reason === "rate_limited" ? "rate_limited" : ["auth_key_rejected", "api_restricted", "project_denied", "permission_denied"].includes(result.reason) ? "permission_denied" : "unknown";
     results.push(`${escapeHtml(key.label)} — ${result.ok ? "✅ valid" : `⚠️ ${key.status}`}`);
   }
   await saveUser(env, userId, user);
@@ -254,10 +255,10 @@ async function aiFallbackSearch(env, chatId, userId, query, kind) {
 }
 
 async function handleGeminiError(env, chatId, userId, key, error) {
-  if (error.code === "RATE_LIMITED" || error.code === "INVALID_KEY") {
+  if (["RATE_LIMITED", "INVALID_KEY", "AUTH_KEY_REJECTED", "PERMISSION_DENIED", "PROJECT_DENIED"].includes(error.code)) {
     const user = await getUser(env, userId);
     const saved = user.keys.find((item) => item.id === key.id);
-    if (saved) saved.status = error.code === "RATE_LIMITED" ? "rate_limited" : "invalid";
+    if (saved) saved.status = error.code === "RATE_LIMITED" ? "rate_limited" : error.code === "INVALID_KEY" ? "invalid" : "permission_denied";
     await saveUser(env, userId, user);
   }
   await reply(env, chatId, `AI request failed: ${escapeHtml(error.message)}\n\nYou can manage your keys from My API keys.`, inline([[{ text: "Manage API keys", callback_data: "key:list" }]]));
