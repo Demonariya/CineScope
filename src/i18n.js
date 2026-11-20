@@ -139,7 +139,7 @@ const translations = [
   [" · Movie", " · فیلم"],
   [" · Series", " · سریال"],
   ["Not exposed by page", "در صفحه ارائه نشده است"],
-  ["No structured synopsis was found on this page.", "خلاصه داستان ساختاریافته‌ای در این صفحه پیدا نشد."]
+  ["No structured synopsis was found on this page.", "خلاصه داستان ساختاریافته‌ای در این صفحه پیدا نشد."],
   ["Buttons", "امکانات"],
   ["Privacy", "حریم خصوصی و امنیت"],
   ["AI gateway", "درگاه هوش مصنوعی"],
