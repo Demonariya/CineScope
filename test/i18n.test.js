@@ -2,11 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { languageFromTelegram, localizeMarkup, normalizeInput, translateText } from "../src/i18n.js";
 
-test("detects Persian Telegram clients and defaults other locales to English", () => {
+test("keeps the bot language Persian regardless of Telegram client locale", () => {
   assert.equal(languageFromTelegram("fa"), "fa");
   assert.equal(languageFromTelegram("fa-IR"), "fa");
-  assert.equal(languageFromTelegram("en"), "en");
-  assert.equal(languageFromTelegram("az"), "en");
+  assert.equal(languageFromTelegram("en"), "fa");
+  assert.equal(languageFromTelegram("az"), "fa");
+  assert.equal(languageFromTelegram(""), "fa");
 });
 
 test("translates interface text while preserving movie titles", () => {
@@ -38,4 +39,13 @@ test("localizes keyboard labels while retaining callback data", () => {
 
 test("formats episode counts in Persian", () => {
   assert.equal(translateText("Showing 3 of 12 episodes.", "fa"), "نمایش 3 از 12 قسمت.");
+});
+
+test("translates fallback result types and private-chat errors into Persian", () => {
+  assert.equal(translateText("A title · 2024 · Movie", "fa"), "A title · 2024 · فیلم");
+  assert.equal(translateText("A title · 2024 · Series", "fa"), "A title · 2024 · سریال");
+  assert.equal(
+    translateText("Please use CineScope in a private chat. API-key management is disabled in groups.", "fa"),
+    "لطفاً از CineScope در گفت‌وگوی خصوصی استفاده کنید. مدیریت کلید API در گروه‌ها غیرفعال است."
+  );
 });
