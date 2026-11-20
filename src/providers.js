@@ -303,7 +303,7 @@ function decodeXml(text = "") {
     .trim();
 }
 
-export async function searchNews(title, rawQuery = false, language = "en") {
+export async function searchNews(title, rawQuery = false, language = "fa") {
   const url = new URL("https://news.google.com/rss/search");
   const isPersian = language === "fa";
   url.searchParams.set("q", rawQuery ? title : (isPersian ? `${title} فیلم OR سریال OR سینما` : `${title} movie OR series`));
@@ -377,11 +377,11 @@ export function titleName(item, kind) {
   return kind === "movie" ? item.Title || item.title || item.name : item.Title || item.name || item.title;
 }
 
-export function safeNewsText(item, language = "en") {
+export function safeNewsText(item, language = "fa") {
   return `<b>${escapeHtml(shortText(item.title, 180))}</b>\n${escapeHtml(item.source || "News source")} · ${escapeHtml(formatDateSafe(item.pubDate, language))}\n<a href="${escapeHtml(item.link)}">Read article</a>`;
 }
 
-function formatDateSafe(value, language = "en") {
+function formatDateSafe(value, language = "fa") {
   const date = new Date(value || "");
   return Number.isNaN(date.getTime()) ? "Date unavailable" : date.toLocaleDateString(language === "fa" ? "fa-IR" : "en-US", { dateStyle: "medium", timeZone: "UTC" });
 }
@@ -498,7 +498,7 @@ export function formatSourceMetadata(item, expectedTitle = "") {
   return lines.join("\n");
 }
 
-export async function searchTrendingNews(language = "en") {
+export async function searchTrendingNews(language = "fa") {
   const query = language === "fa"
     ? "اخبار سینما فیلم سریال فروش گیشه تریلر جدید"
     : "trending movies OR trending TV series OR film box office OR new trailers";
