@@ -22,6 +22,7 @@ test("normalizes Persian reply-keyboard labels to bot actions", () => {
   assert.equal(normalizeInput("🔎 جست‌وجوی فیلم"), "🔎 Search movie");
   assert.equal(normalizeInput("✖️ لغو"), "✖️ Cancel");
   assert.equal(normalizeInput("🌐 زبان"), "/language");
+  assert.equal(normalizeInput("🌐 زبان / زبان"), "/language");
   assert.equal(normalizeInput("/language"), "/language");
 });
 
