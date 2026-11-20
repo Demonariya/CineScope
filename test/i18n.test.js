@@ -49,3 +49,16 @@ test("translates fallback result types and private-chat errors into Persian", ()
     "لطفاً از CineScope در گفت‌وگوی خصوصی استفاده کنید. مدیریت کلید API در گروه‌ها غیرفعال است."
   );
 });
+
+test("translates remaining inline controls and technical labels into Persian", () => {
+  const markup = localizeMarkup({
+    inline_keyboard: [[
+      { text: "🧪 Test all keys", callback_data: "key:test" },
+      { text: "⬅️ Main menu", callback_data: "menu" }
+    ]]
+  }, "fa");
+  assert.equal(markup.inline_keyboard[0][0].text, "🧪 آزمایش همه کلیدها");
+  assert.equal(markup.inline_keyboard[0][1].text, "⬅️ منوی اصلی");
+  assert.equal(translateText("Testing saved keys with Google…", "fa"), "در حال آزمایش کلیدهای ذخیره‌شده با Google…");
+  assert.equal(translateText("AI gateway", "fa"), "درگاه هوش مصنوعی");
+});
