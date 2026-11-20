@@ -132,8 +132,19 @@ async function handleIncomingKey(env, message, userId, chatId) {
     validation = { ok: false, reason: "network_error" };
   }
   if (!validation.ok) {
-    const reason = validation.reason === "invalid" ? "The configured provider rejected this key." : validation.reason === "rate_limited" ? "The provider rate-limited the key during validation. Try later." : validation.reason === "base_url_missing" ? "The bot owner has not configured AI_API_BASE_URL." : "The key could not be validated. Check it and try again.";
-    await reply(env, chatId, `${reason} It has not been stored.`, inline([[{ text: "Try again", callback_data: "key:add" }, { text: "My keys", callback_data: "key:list" }]]));
+    const messages = {
+      invalid_key: "Google says this API key is invalid or revoked. Check that it was copied completely and is active in the provider dashboard.",
+      project_denied: "Google authenticated the request but denied generation access for this project. Check the project's availability and eligibility in Google AI Studio / Cloud Console.",
+      api_restricted: "This API key is restricted from using the Gemini API. Check the API restrictions attached to the key.",
+      permission_denied: "Google returned a permission error for this generation request. Check the project's Gemini API access and model eligibility.",
+      rate_limited: "The provider rate-limited this key. Try again after the quota window resets.",
+      model_unavailable: "The configured Gemini model is unavailable or does not support generateContent. Check GEMINI_MODEL in Cloudflare Worker settings.",
+      base_url_missing: "The bot owner has not configured AI_API_BASE_URL.",
+      empty_response: "Gemini accepted the request but returned no text.",
+    };
+    const reason = messages[validation.reason] || `The provider validation failed${validation.status ? ` (HTTP ${validation.status})` : ""}.`;
+    const detail = validation.message ? `\\nGoogle response: ${shortText(validation.message, 350)}` : "";
+    await reply(env, chatId, `${reason}${detail} It has not been stored.`, inline([[{ text: "Try again", callback_data: "key:add" }, { text: "My keys", callback_data: "key:list" }]]));
     return;
   }
   const id = crypto.randomUUID().slice(0, 8);
