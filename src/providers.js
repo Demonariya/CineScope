@@ -215,26 +215,62 @@ export async function askGemini(env, apiKey, prompt) {
   return text;
 }
 
-export async function validateGeminiKey(apiKey, env) {
-  const mode = String(env.AI_API_MODE || "google").trim().toLowerCase();
-  let response;
-  if (mode === "responses") {
-    if (!env.AI_API_BASE_URL) return { ok: false, reason: "base_url_missing" };
-    const base = String(env.AI_API_BASE_URL).replace(/\/+$/, "");
-    response = await fetch(`${base}/models`, {
-      headers: { authorization: `Bearer ${apiKey}` }
-    });
-  } else {
-    response = await fetch(`${GEMINI_BASE}/models?pageSize=1`, {
-      headers: { "x-goog-api-key": apiKey }
-    });
+function classifyGeminiFailure(status, data = {}) {
+  const message = String(data?.error?.message || data?.message || "").trim();
+  const details = Array.isArray(data?.error?.details) ? data.error.details : [];
+  const reasons = details.map((item) => String(item?.reason || "")).filter(Boolean);
+  const diagnostic = (reasons.join(" ") + " " + message).toLowerCase();
+
+  if (status === 429) return { ok: false, reason: "rate_limited", status, message };
+  if (status === 401 || /api_key_invalid|api_key_expired|api key not valid/.test(diagnostic)) {
+    return { ok: false, reason: "invalid_key", status, message };
   }
-  if (response.status === 429) return { ok: false, reason: "rate_limited" };
-  if (response.status === 401 || response.status === 403) return { ok: false, reason: "invalid" };
-  if (!response.ok) return { ok: false, reason: `http_${response.status}` };
-  return { ok: true };
+  if (/your project has been denied access|project.{0,40}(denied|restricted)/.test(diagnostic)) {
+    return { ok: false, reason: "project_denied", status, message };
+  }
+  if (/api_key_service_blocked|requests to this api .*blocked/.test(diagnostic)) {
+    return { ok: false, reason: "api_restricted", status, message };
+  }
+  if (status === 403) return { ok: false, reason: "permission_denied", status, message };
+  if (status === 404 || /model .*not found|not supported for generatecontent/.test(diagnostic)) {
+    return { ok: false, reason: "model_unavailable", status, message };
+  }
+  return { ok: false, reason: `http_${status}`, status, message };
 }
 
+export async function validateGeminiKey(apiKey, env) {
+  const mode = String(env.AI_API_MODE || "google").trim().toLowerCase();
+  if (mode === "responses") {
+    if (!env.AI_API_BASE_URL) return { ok: false, reason: "base_url_missing" };
+    const base = String(env.AI_API_BASE_URL).replace(/\\/+$/, "");
+    const response = await fetch(`${base}/models`, {
+      headers: { authorization: `Bearer ${apiKey}` }
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      return classifyGeminiFailure(response.status, data);
+    }
+    return { ok: true };
+  }
+
+  // Test the real generation endpoint. models.list can succeed even when
+  // the Google project is not permitted to call generateContent.
+  const model = String(env.GEMINI_MODEL || "gemini-3.8-flash").trim();
+  const response = await fetch(`${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: "Reply with OK." }] }],
+      generationConfig: { maxOutputTokens: 8, temperature: 0 }
+    })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) return classifyGeminiFailure(response.status, data);
+  if (!data.candidates?.[0]?.content?.parts?.some((part) => typeof part.text === "string")) {
+    return { ok: false, reason: "empty_response", status: response.status, message: "Gemini accepted the request but returned no text." };
+  }
+  return { ok: true };
+}
 
 function decodeXml(text = "") {
   return String(text)
