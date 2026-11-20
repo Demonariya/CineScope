@@ -31,6 +31,8 @@ test("localizes keyboard labels while retaining callback data", () => {
   assert.equal(localized.inline_keyboard[0][0].text, "منوی اصلی");
   assert.equal(localized.inline_keyboard[0][0].callback_data, "menu");
   assert.equal(markup.inline_keyboard[0][0].text, "Main menu");
+  const season = localizeMarkup({ inline_keyboard: [[{ text: "Season 2", callback_data: "season:tt123:2" }]] }, "fa");
+  assert.equal(season.inline_keyboard[0][0].text, "فصل 2");
 });
 
 test("formats episode counts in Persian", () => {
