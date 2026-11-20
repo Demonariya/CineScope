@@ -2,6 +2,14 @@
 
 A button-driven Telegram assistant for movie and TV metadata. It runs on Cloudflare Workers with a Telegram webhook and does not require a VPS.
 
+## Languages
+
+- First-run language is detected from the Telegram user's language code; Persian-speaking users get Persian by default.
+- Users can switch between Persian and English with `/language` or the Language menu button.
+- Language preference is stored per user in the encrypted user profile.
+- Menus, help text, status messages, errors, and movie metadata labels are localized. Titles and synopsis text returned by OMDb may remain in the source language.
+- Persian news search uses the Persian Google News locale.
+
 ## Features
 
 - Search movies and TV series by title using OMDb.
