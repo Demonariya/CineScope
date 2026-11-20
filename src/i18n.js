@@ -155,7 +155,7 @@ export function localizeMarkup(markup, language = "en") {
     let text = button.text;
     if (text === "🌐 Language / زبان") text = "🌐 زبان";
     else if (text === "🇬🇧 English") text = "🇬🇧 انگلیسی";
-    else if (typeof text === "string" && /^Season \\d+$/.test(text)) text = text.replace(/^Season /, "فصل ");
+    else if (typeof text === "string" && /^Season \d+$/.test(text)) text = text.replace(/^Season /, "فصل ");
     else if (typeof text === "string") text = translateText(text, language);
     return { ...button, ...(typeof text === "string" ? { text } : {}) };
   };
