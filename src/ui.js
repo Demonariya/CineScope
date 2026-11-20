@@ -4,6 +4,7 @@ export const MAIN_KEYBOARD = {
     [{ text: "📰 Cinema news" }, { text: "🔥 Trending" }],
     [{ text: "📚 Watchlist" }, { text: "🤖 Ask AI" }],
     [{ text: "🔑 My API keys" }, { text: "🗂 Site metadata" }],
+    [{ text: "🌐 Language / زبان" }],
     [{ text: "❔ Help" }]
   ],
   resize_keyboard: true,
@@ -32,10 +33,11 @@ export function shortText(value, max = 500) {
   return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
 }
 
-export function formatDate(value) {
-  if (!value) return "Unknown";
+export function formatDate(value, language = "en") {
+  if (!value) return language === "fa" ? "نامشخص" : "Unknown";
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString("en-US", {
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString(language === "fa" ? "fa-IR" : "en-US", {
     year: "numeric", month: "short", day: "numeric", timeZone: "UTC"
   });
 }
