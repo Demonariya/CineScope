@@ -262,7 +262,7 @@ export async function validateGeminiKey(apiKey, env) {
   const mode = String(env.AI_API_MODE || "google").trim().toLowerCase();
   if (mode === "responses") {
     if (!env.AI_API_BASE_URL) return { ok: false, reason: "base_url_missing" };
-    const base = String(env.AI_API_BASE_URL).replace(/\\/+$/, "");
+    const base = String(env.AI_API_BASE_URL).replace(/\/+$/, "");
     const response = await fetch(`${base}/models`, {
       headers: { authorization: `Bearer ${apiKey}` }
     });
