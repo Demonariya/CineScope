@@ -247,12 +247,13 @@ function decodeXml(text = "") {
     .trim();
 }
 
-export async function searchNews(title, rawQuery = false) {
+export async function searchNews(title, rawQuery = false, language = "en") {
   const url = new URL("https://news.google.com/rss/search");
-  url.searchParams.set("q", rawQuery ? title : `${title} movie OR series`);
-  url.searchParams.set("hl", "en-US");
-  url.searchParams.set("gl", "US");
-  url.searchParams.set("ceid", "US:en");
+  const isPersian = language === "fa";
+  url.searchParams.set("q", rawQuery ? title : (isPersian ? `${title} فیلم OR سریال OR سینما` : `${title} movie OR series`));
+  url.searchParams.set("hl", isPersian ? "fa" : "en-US");
+  url.searchParams.set("gl", isPersian ? "IR" : "US");
+  url.searchParams.set("ceid", isPersian ? "IR:fa" : "US:en");
   const response = await fetch(url, {
     headers: { accept: "application/rss+xml, application/xml, text/xml" },
     signal: AbortSignal.timeout(12000)
@@ -320,13 +321,13 @@ export function titleName(item, kind) {
   return kind === "movie" ? item.Title || item.title || item.name : item.Title || item.name || item.title;
 }
 
-export function safeNewsText(item) {
-  return `<b>${escapeHtml(shortText(item.title, 180))}</b>\n${escapeHtml(item.source || "News source")} · ${escapeHtml(formatDateSafe(item.pubDate))}\n<a href="${escapeHtml(item.link)}">Read article</a>`;
+export function safeNewsText(item, language = "en") {
+  return `<b>${escapeHtml(shortText(item.title, 180))}</b>\n${escapeHtml(item.source || "News source")} · ${escapeHtml(formatDateSafe(item.pubDate, language))}\n<a href="${escapeHtml(item.link)}">Read article</a>`;
 }
 
-function formatDateSafe(value) {
+function formatDateSafe(value, language = "en") {
   const date = new Date(value || "");
-  return Number.isNaN(date.getTime()) ? "Date unavailable" : date.toLocaleDateString("en-US", { dateStyle: "medium", timeZone: "UTC" });
+  return Number.isNaN(date.getTime()) ? "Date unavailable" : date.toLocaleDateString(language === "fa" ? "fa-IR" : "en-US", { dateStyle: "medium", timeZone: "UTC" });
 }
 
 const SOURCE_HOSTS = new Set(["dornatv.com", "www.dornatv.com", "movieplus.top", "www.movieplus.top", "animex.pro", "www.animex.pro"]);
@@ -441,6 +442,9 @@ export function formatSourceMetadata(item, expectedTitle = "") {
   return lines.join("\n");
 }
 
-export async function searchTrendingNews() {
-  return searchNews("trending movies OR trending TV series OR film box office OR new trailers", true);
+export async function searchTrendingNews(language = "en") {
+  const query = language === "fa"
+    ? "اخبار سینما فیلم سریال فروش گیشه تریلر جدید"
+    : "trending movies OR trending TV series OR film box office OR new trailers";
+  return searchNews(query, true, language);
 }
