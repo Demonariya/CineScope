@@ -1,19 +1,18 @@
 export const MAIN_KEYBOARD = {
   keyboard: [
-    [{ text: "🔎 Search movie" }, { text: "📺 Search series" }],
-    [{ text: "📰 Cinema news" }, { text: "🔥 Trending" }],
-    [{ text: "📚 Watchlist" }, { text: "🤖 Ask AI" }],
-    [{ text: "🔑 My API keys" }, { text: "🗂 Site metadata" }],
-    [{ text: "🌐 Language / زبان" }],
-    [{ text: "❔ Help" }]
+    [{ text: "🔎 جست‌وجوی فیلم" }, { text: "📺 جست‌وجوی سریال" }],
+    [{ text: "📰 اخبار سینما" }, { text: "🔥 ترندها" }],
+    [{ text: "📚 فهرست تماشا" }, { text: "🤖 پرسش از هوش مصنوعی" }],
+    [{ text: "🔑 کلیدهای API من" }, { text: "🗂 اطلاعات سایت" }],
+    [{ text: "❔ راهنما" }]
   ],
   resize_keyboard: true,
   is_persistent: true,
-  input_field_placeholder: "Send a movie or series title…"
+  input_field_placeholder: "نام فیلم یا سریال را ارسال کنید…"
 };
 
 export const CANCEL_KEYBOARD = {
-  keyboard: [[{ text: "✖️ Cancel" }]],
+  keyboard: [[{ text: "✖️ لغو" }]],
   resize_keyboard: true,
   one_time_keyboard: true
 };
@@ -45,15 +44,15 @@ export function formatDate(value, language = "en") {
 export function mainMenuText() {
   return [
     "<b>🎬 CineScope</b>",
-    "Your movie &amp; series companion.",
+    "همراه شما برای دنیای فیلم و سریال.",
     "",
-    "Choose an action below, or send a title directly.",
-    "<i>Tip: Search supports movie and TV-show titles.</i>"
+    "یکی از گزینه‌های زیر را انتخاب کنید یا نام فیلم و سریال را مستقیم بفرستید.",
+    "<i>نکته: جست‌وجو از عنوان فیلم و سریال پشتیبانی می‌کند.</i>"
   ].join("\n");
 }
 
 export function keyLabel(key, activeKeyId) {
-  const state = key.status === "rate_limited" ? "⏳ Limited" : key.status === "invalid" ? "⚠️ Invalid" : "✅ Ready";
-  const active = key.id === activeKeyId ? " · ACTIVE" : "";
+  const state = key.status === "rate_limited" ? "⏳ محدودیت درخواست" : key.status === "invalid" ? "⚠️ نامعتبر" : "✅ آماده";
+  const active = key.id === activeKeyId ? " · فعال" : "";
   return `${state}${active} · ${key.label}`;
 }
