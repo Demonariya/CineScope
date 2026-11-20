@@ -1,3 +1,5 @@
+import { localizeMarkup, translateText } from "./i18n.js";
+
 const API = "https://api.telegram.org";
 
 export async function telegram(env, method, payload = {}) {
@@ -18,10 +20,10 @@ export async function telegram(env, method, payload = {}) {
 export async function sendMessage(env, chatId, text, replyMarkup, options = {}) {
   return telegram(env, "sendMessage", {
     chat_id: chatId,
-    text,
+    text: translateText(text, "fa"),
     parse_mode: "HTML",
     disable_web_page_preview: true,
-    ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+    ...(replyMarkup ? { reply_markup: localizeMarkup(replyMarkup, "fa") } : {}),
     ...options
   });
 }
@@ -30,17 +32,17 @@ export async function editMessage(env, chatId, messageId, text, replyMarkup) {
   return telegram(env, "editMessageText", {
     chat_id: chatId,
     message_id: messageId,
-    text,
+    text: translateText(text, "fa"),
     parse_mode: "HTML",
     disable_web_page_preview: true,
-    ...(replyMarkup ? { reply_markup: replyMarkup } : {})
+    ...(replyMarkup ? { reply_markup: localizeMarkup(replyMarkup, "fa") } : {})
   });
 }
 
 export async function answerCallback(env, callbackId, text = "", showAlert = false) {
   return telegram(env, "answerCallbackQuery", {
     callback_query_id: callbackId,
-    ...(text ? { text } : {}),
+    ...(text ? { text: translateText(text, "fa") } : {}),
     show_alert: showAlert
   });
 }
@@ -57,8 +59,8 @@ export async function sendPhoto(env, chatId, photo, caption, replyMarkup) {
   return telegram(env, "sendPhoto", {
     chat_id: chatId,
     photo,
-    caption,
+    caption: translateText(caption, "fa"),
     parse_mode: "HTML",
-    ...(replyMarkup ? { reply_markup: replyMarkup } : {})
+    ...(replyMarkup ? { reply_markup: localizeMarkup(replyMarkup, "fa") } : {})
   });
 }
