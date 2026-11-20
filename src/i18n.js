@@ -170,7 +170,9 @@ const translations = [
   ["Key not found.", "کلید پیدا نشد."]
 ];
 
-const sortedTranslations = [...translations].sort((a, b) => b[0].length - a[0].length);
+const sortedTranslations = translations
+  .filter((entry) => Array.isArray(entry) && typeof entry[0] === "string" && typeof entry[1] === "string")
+  .sort((a, b) => b[0].length - a[0].length);
 
 export function languageFromTelegram(_languageCode = "") {
   // CineScope is Persian-only: Telegram client locale never changes the bot language.
