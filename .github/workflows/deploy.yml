@@ -24,6 +24,15 @@ jobs:
         run: npm run check
       - name: Run tests
         run: npm test
+      - name: Configure KV namespace
+        env:
+          CINE_KV_NAMESPACE_ID: ${{ secrets.CINE_KV_NAMESPACE_ID }}
+        run: |
+          if [ -z "$CINE_KV_NAMESPACE_ID" ]; then
+            echo "::error::Add CINE_KV_NAMESPACE_ID to repository Actions secrets. Use the ID of the existing CINE_KV namespace."
+            exit 1
+          fi
+          node -e "const fs=require('node:fs'); const p='wrangler.toml'; const s=fs.readFileSync(p,'utf8'); const id=process.env.CINE_KV_NAMESPACE_ID.trim(); if (!/^[a-f0-9]{32}$/i.test(id)) throw new Error('CINE_KV_NAMESPACE_ID must be a 32-character Cloudflare KV namespace ID'); fs.writeFileSync(p,s.replace('REPLACE_WITH_YOUR_KV_NAMESPACE_ID',id));"
       - name: Deploy to Cloudflare Workers
         run: npx wrangler deploy
         env:
