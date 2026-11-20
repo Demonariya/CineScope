@@ -289,7 +289,7 @@ async function showSeason(env, chatId, imdbId, seasonNumber) {
   const season = await getSeason(env, imdbId, seasonNumber);
   const user = await getUser(env, chatId);
   const rawSeasonName = season.name || `Season ${seasonNumber}`;
-  const seasonName = user.language === "fa" ? rawSeasonName.replace(/^Season (?=\\d+$)/i, "فصل ") : rawSeasonName;
+  const seasonName = user.language === "fa" ? rawSeasonName.replace(/^Season (?=\d+$)/i, "فصل ") : rawSeasonName;
   const episodes = season.episodes || [];
   const visibleEpisodes = episodes.slice(0, 14);
   const lines = [
