@@ -147,6 +147,8 @@ npm run dev
 
 ## GitHub Actions deployment (optional)
 
+Add `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and `CINE_KV_NAMESPACE_ID` to repository Actions secrets. `CINE_KV_NAMESPACE_ID` must be the 32-character ID of the existing `CINE_KV` namespace. The workflow injects it at deploy time; do not commit it.
+
 Add these GitHub repository secrets:
 
 - `CLOUDFLARE_API_TOKEN`
