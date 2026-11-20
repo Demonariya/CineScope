@@ -92,7 +92,7 @@ const translations = [
   ["Cast: Not available", "بازیگران: در دسترس نیست"], ["Added: Unknown", "زمان افزودن: نامشخص"],
   ["No synopsis is available.", "خلاصه داستانی در دسترس نیست."],
   ["Year unknown", "سال نامشخص"], ["Episodes:", "قسمت‌ها:"], ["Date unknown", "تاریخ نامشخص"],
-  ["Season ", "فصل "],
+
   ["Source-page metadata", "اطلاعات صفحه منبع"], ["Site title:", "عنوان سایت:"], ["Date:", "تاریخ:"],
   ["Genres:", "ژانرها:"], ["Description", "توضیحات"], ["No structured synopsis was found on this page.", "خلاصه داستان ساختاریافته‌ای در این صفحه پیدا نشد."],
   ["Requested title:", "عنوان درخواستی:"], ["Not exposed by page", "در صفحه ارائه نشده است"],
@@ -155,6 +155,7 @@ export function localizeMarkup(markup, language = "en") {
     let text = button.text;
     if (text === "🌐 Language / زبان") text = "🌐 زبان";
     else if (text === "🇬🇧 English") text = "🇬🇧 انگلیسی";
+    else if (typeof text === "string" && /^Season \\d+$/.test(text)) text = text.replace(/^Season /, "فصل ");
     else if (typeof text === "string") text = translateText(text, language);
     return { ...button, ...(typeof text === "string" ? { text } : {}) };
   };
