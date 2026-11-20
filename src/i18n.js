@@ -121,13 +121,32 @@ const translations = [
   ["Send a movie or series title…", "نام فیلم یا سریال را ارسال کنید…"],
   ["Select language / زبان را انتخاب کنید:", "زبان موردنظر را انتخاب کنید:"],
   ["Language updated to Persian.", "زبان بات به فارسی تغییر کرد."],
-  ["Bot language changed to English.", "زبان بات به انگلیسی تغییر کرد."]
+  ["Bot language changed to English.", "زبان بات به انگلیسی تغییر کرد."],
+  ["Please use CineScope in a private chat. API-key management is disabled in groups.", "لطفاً از CineScope در گفت‌وگوی خصوصی استفاده کنید. مدیریت کلید API در گروه‌ها غیرفعال است."],
+  ["CineScope hit an internal error while handling that request. Please try again.", "هنگام پردازش درخواست خطای داخلی رخ داد. لطفاً دوباره تلاش کنید."],
+  ["The provider validation failed", "اعتبارسنجی سرویس‌دهنده ناموفق بود"],
+  ["The provider rejected this key.", "سرویس‌دهنده این کلید را نپذیرفت."],
+  ["The provider rate-limited this key.", "سرویس‌دهنده برای این کلید محدودیت درخواست اعمال کرده است."],
+  ["OMDb request limit reached. Try again later.", "سقف درخواست OMDb پر شده است. بعداً دوباره تلاش کنید."],
+  ["OMDb rejected OMDB_API_KEY. Check the key in Cloudflare Worker secrets.", "OMDb کلید OMDB_API_KEY را نپذیرفت. مقدار آن را در اسرار Cloudflare Worker بررسی کنید."],
+  ["Only HTTPS detail pages from dornatv.com, movieplus.top, or animex.pro are supported.", "فقط نشانی صفحه جزئیات با HTTPS از سایت‌های dornatv.com، movieplus.top و animex.pro پشتیبانی می‌شود."],
+  ["URLs containing credentials are not allowed.", "نشانی‌های اینترنتی دارای نام کاربری یا گذرواژه پذیرفته نمی‌شوند."],
+  ["The source page redirected too many times.", "تعداد تغییر مسیرهای صفحه منبع بیش از حد مجاز است."],
+  ["The source page could not be loaded safely.", "بارگذاری امن صفحه منبع ممکن نشد."],
+  ["Send a valid HTTPS page URL from one of the supported sites.", "یک نشانی معتبر HTTPS از صفحه یکی از سایت‌های پشتیبانی‌شده ارسال کنید."],
+  ["The source page is larger than the 2 MB metadata limit.", "حجم صفحه منبع از محدودیت ۲ مگابایتی اطلاعات بیشتر است."],
+  ["The supplied URL did not return an HTML page.", "نشانی ارسال‌شده یک صفحه HTML برنگرداند."],
+  [" · Movie", " · فیلم"],
+  [" · Series", " · سریال"],
+  ["Not exposed by page", "در صفحه ارائه نشده است"],
+  ["No structured synopsis was found on this page.", "خلاصه داستان ساختاریافته‌ای در این صفحه پیدا نشد."]
 ];
 
 const sortedTranslations = [...translations].sort((a, b) => b[0].length - a[0].length);
 
-export function languageFromTelegram(languageCode = "") {
-  return String(languageCode).toLowerCase().startsWith("fa") ? "fa" : "en";
+export function languageFromTelegram(_languageCode = "") {
+  // CineScope is Persian-only: Telegram client locale never changes the bot language.
+  return "fa";
 }
 
 export function normalizeInput(value = "") {
