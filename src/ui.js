@@ -32,7 +32,7 @@ export function shortText(value, max = 500) {
   return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
 }
 
-export function formatDate(value, language = "en") {
+export function formatDate(value, language = "fa") {
   if (!value) return language === "fa" ? "نامشخص" : "Unknown";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
