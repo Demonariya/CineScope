@@ -21,12 +21,7 @@ function isPrivateChat(message) {
 }
 
 async function reply(env, chatId, text, markup = MAIN_KEYBOARD, options = {}) {
-  let language = "en";
-  try {
-    const user = await getUser(env, chatId);
-    language = user.language === "fa" ? "fa" : "en";
-  } catch { /* Keep error replies available even when user storage is unavailable. */ }
-  return sendMessage(env, chatId, translateText(text, language), localizeMarkup(markup, language), options);
+  return sendMessage(env, chatId, translateText(text, "fa"), localizeMarkup(markup, "fa"), options);
 }
 
 async function showMenu(env, chatId) {
@@ -39,9 +34,8 @@ async function handleStart(env, chatId, userId) {
 }
 
 async function showLanguageSettings(env, chatId) {
-  await reply(env, chatId, "Select language / زبان را انتخاب کنید:", inline([
-    [{ text: "🇮🇷 فارسی", callback_data: "lang:fa" }, { text: "🇬🇧 English", callback_data: "lang:en" }],
-    [{ text: "⬅️ Main menu", callback_data: "menu" }]
+  await reply(env, chatId, "زبان ربات فارسی است و همه پیام‌ها و منوها به فارسی نمایش داده می‌شوند.", inline([
+    [{ text: "⬅️ منوی اصلی", callback_data: "menu" }]
   ]));
 }
 
@@ -143,9 +137,9 @@ async function handleIncomingKey(env, message, userId, chatId) {
       base_url_missing: "The bot owner has not configured AI_API_BASE_URL.",
       empty_response: "Gemini accepted the request but returned no text.",
     };
-    const reason = messages[validation.reason] || `The provider validation failed${validation.status ? ` (HTTP ${validation.status})` : ""}.`;
-    const detail = validation.message ? `\nGoogle response: ${shortText(validation.message, 350)}` : "";
-    await reply(env, chatId, `${reason}${detail} It has not been stored.`, inline([[{ text: "Try again", callback_data: "key:add" }, { text: "My keys", callback_data: "key:list" }]]));
+    const reason = messages[validation.reason] || `اعتبارسنجی سرویس‌دهنده ناموفق بود${validation.status ? ` (HTTP ${validation.status})` : ""}.`;
+    const detail = validation.reason ? `\nکد خطا: ${validation.reason}${validation.status ? ` (HTTP ${validation.status})` : ""}` : "";
+    await reply(env, chatId, `${reason}${detail}\nاین کلید ذخیره نشد.`, inline([[{ text: "تلاش دوباره", callback_data: "key:add" }, { text: "کلیدهای من", callback_data: "key:list" }]]));
     return;
   }
   const id = crypto.randomUUID().slice(0, 8);
@@ -222,7 +216,7 @@ async function runSearch(env, chatId, userId, query, kind = "all") {
   const perKindLimit = kind === "all" ? 3 : MAX_CALLBACK_RESULTS;
   const results = resultGroups.flatMap((group) => group.slice(0, perKindLimit)).slice(0, MAX_CALLBACK_RESULTS);
   if (!results.length) {
-    const reason = failures[0] ? `OMDb search failed: ${failures[0]}` : "No matching titles were found in OMDb. Try the original title or include the release year.";
+    const reason = failures.length ? "جست‌وجو در پایگاه اطلاعاتی فیلم و سریال موقتاً ناموفق بود. کمی بعد دوباره تلاش کنید." : "عنوانی مطابق جست‌وجو پیدا نشد. عنوان اصلی را امتحان کنید یا سال انتشار را هم بنویسید.";
     await reply(env, chatId, escapeHtml(reason), MAIN_KEYBOARD);
     return;
   }
@@ -246,7 +240,7 @@ async function aiFallbackSearch(env, chatId, userId, query, kind) {
   }
   const typeHint = kind === "movie" ? "movie" : kind === "tv" ? "TV series" : "movie or TV series";
   try {
-    const responseLanguage = user.language === "fa" ? "Persian" : "English";
+    const responseLanguage = "Persian";
     const answer = await askGemini(env, key.secret, `You are CineScope, an entertainment metadata assistant. Give a cautious, concise profile for the ${typeHint} titled: ${query}. Include likely title, original title, release year, type, genres, director/creator, cast, synopsis, and seasons/episode counts only when you are confident. Mark uncertain fields as unknown. Do not invent current release news, streaming availability, or episode details. Answer in ${responseLanguage} with clear headings.`);
     await reply(env, chatId, `<b>AI lookup · ${escapeHtml(query)}</b>\n${escapeHtml(shortText(answer, 3400))}\n\n<i>AI-generated; verify details against an authoritative catalog.</i>`, MAIN_KEYBOARD);
   } catch (error) {
@@ -261,7 +255,17 @@ async function handleGeminiError(env, chatId, userId, key, error) {
     if (saved) saved.status = error.code === "RATE_LIMITED" ? "rate_limited" : error.code === "INVALID_KEY" ? "invalid" : "permission_denied";
     await saveUser(env, userId, user);
   }
-  await reply(env, chatId, `AI request failed: ${escapeHtml(error.message)}\n\nYou can manage your keys from My API keys.`, inline([[{ text: "Manage API keys", callback_data: "key:list" }]]));
+  const messages = {
+    RATE_LIMITED: "سهمیه یا محدودیت تعداد درخواست سرویس هوش مصنوعی پر شده است. پس از بازنشانی سهمیه دوباره تلاش کنید.",
+    INVALID_KEY: "کلید API نامعتبر یا باطل شده است. کلید را بررسی کنید یا کلید دیگری ثبت کنید.",
+    AUTH_KEY_REJECTED: "سرویس گوگل نوع کلید احراز هویت را نپذیرفت. فعال بودن کلید را در Google AI Studio بررسی کنید.",
+    PERMISSION_DENIED: "این پروژه یا کلید مجوز استفاده از مدل هوش مصنوعی را ندارد.",
+    PROJECT_DENIED: "دسترسی پروژه به سرویس هوش مصنوعی رد شده است.",
+    MODEL_UNAVAILABLE: "مدل هوش مصنوعی تنظیم‌شده در دسترس نیست یا از این درخواست پشتیبانی نمی‌کند.",
+    GEMINI_API_ERROR: "در ارتباط با سرویس هوش مصنوعی خطایی رخ داد."
+  };
+  const message = messages[error.code] || "در اجرای درخواست هوش مصنوعی خطایی رخ داد. تنظیمات سرویس و اتصال را بررسی کنید.";
+  await reply(env, chatId, `❌ ${message}\n\nبرای مدیریت کلیدها از بخش «کلیدهای API من» استفاده کنید.`, inline([[{ text: "مدیریت کلیدهای API", callback_data: "key:list" }]]));
 }
 
 async function showTitle(env, chatId, userId, kind, id) {
@@ -315,7 +319,7 @@ async function showSeason(env, chatId, imdbId, seasonNumber) {
 }
 
 async function showNews(env, chatId, userId, title) {
-  const language = (await getUser(env, userId)).language || "en";
+  const language = "fa";
   await reply(env, chatId, `Searching recent news for <b>${escapeHtml(title)}</b>…`, MAIN_KEYBOARD);
   let items;
   try { items = await searchNews(title, false, language); }
@@ -445,8 +449,8 @@ async function handleMessage(env, message) {
   const chatId = message.chat.id;
   const userId = message.from.id;
   const profile = await getUser(env, userId);
-  if (!profile.language) {
-    profile.language = languageFromTelegram(message.from?.language_code);
+  if (profile.language !== "fa") {
+    profile.language = "fa";
     await saveUser(env, userId, profile);
   }
   const text = normalizeInput(String(message.text || "").trim());
@@ -487,7 +491,7 @@ async function handleMessage(env, message) {
         return;
       }
       try {
-        const responseLanguage = user.language === "fa" ? "Persian" : "English";
+        const responseLanguage = "Persian";
         const answer = await askGemini(env, key.secret, `You are CineScope, a concise movie and television assistant. Answer the user's question accurately in ${responseLanguage}. Do not invent current release information or streaming availability; state uncertainty clearly. User question: ${text}`);
         await reply(env, chatId, `<b>🤖 CineScope AI</b>\n${escapeHtml(shortText(answer, 3400))}`, MAIN_KEYBOARD);
       } catch (error) {
@@ -523,7 +527,7 @@ async function handleMessage(env, message) {
 }
 
 async function showTrending(env, chatId) {
-  const language = (await getUser(env, chatId)).language || "en";
+  const language = "fa";
   let results;
   try { results = await searchTrendingNews(language); }
   catch (error) {
@@ -558,9 +562,9 @@ async function handleCallback(env, callback) {
     if (action === "lang" && (parts[1] === "fa" || parts[1] === "en")) {
       await clearFlow(env, userId);
       const user = await getUser(env, userId);
-      user.language = parts[1];
+      user.language = "fa";
       await saveUser(env, userId, user);
-      await reply(env, chatId, parts[1] === "fa" ? "Language updated to Persian." : "Bot language changed to English.", MAIN_KEYBOARD);
+      await reply(env, chatId, "زبان CineScope همیشه فارسی است.", MAIN_KEYBOARD);
       return showMenu(env, chatId);
     }
     if (data === "key:list") return showKeys(env, chatId, userId);
