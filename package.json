@@ -9,7 +9,7 @@
     "deploy": "wrangler deploy",
     "webhook:set": "node scripts/set-webhook.js",
     "webhook:delete": "node scripts/delete-webhook.js",
-    "check": "node --check src/index.js && node --check src/bot.js && node --check src/providers.js && node --check src/storage.js && node --check src/telegram.js && node --check src/ui.js",
+    "check": "node --check src/index.js && node --check src/bot.js && node --check src/providers.js && node --check src/storage.js && node --check src/telegram.js && node --check src/ui.js && node --check src/i18n.js",
     "test": "node --test"
   },
   "devDependencies": {
