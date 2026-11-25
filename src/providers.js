@@ -4,6 +4,10 @@ import { fetchWithRetry } from "./http.js";
 const OMDB_BASE = "https://www.omdbapi.com/";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
+function getGeminiBase(env = {}) {
+  return String(env.GEMINI_API_BASE_URL || GEMINI_BASE).trim().replace(/\\/+$/, "");
+}
+
 async function omdb(env, params = {}) {
   if (!env.OMDB_API_KEY) {
     throw new Error("OMDb is not configured. Add OMDB_API_KEY as a Cloudflare Worker secret.");
@@ -147,6 +151,7 @@ function extractResponseText(data = {}) {
 export async function askGemini(env, apiKey, prompt) {
   const mode = String(env.AI_API_MODE || "google").trim().toLowerCase();
   const model = String(env.GEMINI_MODEL || "gemini-4-hydrogen").trim();
+  const geminiBase = getGeminiBase(env);
 
   if (mode === "responses") {
     if (!env.AI_API_BASE_URL) throw new Error("AI_API_BASE_URL is required when AI_API_MODE=responses");
@@ -193,7 +198,7 @@ export async function askGemini(env, apiKey, prompt) {
     return text;
   }
 
-  const response = await fetchAiProvider(`${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`, {
+  const response = await fetchAiProvider(`${geminiBase}/models/${encodeURIComponent(model)}:generateContent`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -284,7 +289,8 @@ export async function validateGeminiKey(apiKey, env) {
   // Test the real generation endpoint. models.list can succeed even when
   // the Google project is not permitted to call generateContent.
   const model = String(env.GEMINI_MODEL || "gemini-4-hydrogen").trim();
-  const response = await fetchAiProvider(`${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`, {
+  const geminiBase = getGeminiBase(env);
+  const response = await fetchAiProvider(`${geminiBase}/models/${encodeURIComponent(model)}:generateContent`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
     body: JSON.stringify({
