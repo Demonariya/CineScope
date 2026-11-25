@@ -62,3 +62,10 @@ test("translates remaining inline controls and technical labels into Persian", (
   assert.equal(translateText("Testing saved keys with Google…", "fa"), "در حال آزمایش کلیدهای ذخیره‌شده با Google…");
   assert.equal(translateText("AI gateway", "fa"), "درگاه هوش مصنوعی");
 });
+
+test("translates temporary HTTP 503 messages without calling the key invalid", () => {
+  assert.equal(
+    translateText("The AI service is temporarily unavailable (HTTP 503). CineScope retried automatically, but the provider remained unavailable. This does not mean your API key is invalid.", "fa"),
+    "سرویس هوش مصنوعی موقتاً در دسترس نیست (HTTP 503). ربات به‌صورت خودکار دوباره تلاش کرد، اما سرویس‌دهنده همچنان پاسخ نداد. این خطا به معنی نامعتبر بودن کلید API نیست."
+  );
+});
