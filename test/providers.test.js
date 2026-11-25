@@ -267,6 +267,8 @@ test("fetches matching public title pages and filters external or direct-media l
       <a href="/john-wick-chapter-2/">John Wick Chapter 2</a>
       <a href="https://evil.example/john-wick/">John Wick</a>
       <a href="/john-wick-stream.m3u8">John Wick stream</a>
+      <a href="/player/john-wick/">John Wick player</a>
+      <a href="/john-wick/?file=stream.m3u8">John Wick file route</a>
       <a href="/other-film/">Other Film</a>
       <a href="/category/action/">John Wick</a>
     </body></html>`, {
@@ -284,6 +286,8 @@ test("fetches matching public title pages and filters external or direct-media l
     assert.ok(result.results.some((item) => item.url.endsWith("/john-wick-2014/")));
     assert.ok(result.results.some((item) => item.url.endsWith("/john-wick-chapter-2/")));
     assert.ok(result.results.every((item) => !/\.m3u8?($|\?)/i.test(item.url)));
+    assert.ok(result.results.every((item) => !/\/player\//i.test(item.url)));
+    assert.ok(result.results.every((item) => !/[?&](?:file|stream)=/i.test(item.url)));
   } finally {
     globalThis.fetch = originalFetch;
   }
