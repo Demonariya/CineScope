@@ -5,7 +5,7 @@ const OMDB_BASE = "https://www.omdbapi.com/";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
 function getGeminiBase(env = {}) {
-  return String(env.GEMINI_API_BASE_URL || GEMINI_BASE).trim().replace(/\\/+$/, "");
+  return String(env.GEMINI_API_BASE_URL || GEMINI_BASE).trim().replace(/\/+$/, "");
 }
 
 async function omdb(env, params = {}) {
