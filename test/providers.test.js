@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   mapOmdbSearchItem, mapOmdbTitle, mapOmdbSeason,
-  searchTitles, getTitle, getSeason, getSourceMetadata, validateGeminiKey
+  searchTitles, getTitle, getSeason, getSourceMetadata, validateGeminiKey,
+  getSiteLinkSources, searchSiteTitles
 } from "../src/providers.js";
 
 test("maps OMDb search results to IMDb IDs and bot kinds", () => {
@@ -248,4 +249,84 @@ test("classifies Gemini API key restrictions separately", async () => {
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+
+test("lists only the three configured title-link sources", () => {
+  assert.deepEqual(getSiteLinkSources().map((site) => site.key), ["dorna", "movieplus", "animex"]);
+  assert.deepEqual(getSiteLinkSources().map((site) => site.host), ["dornatv.com", "movieplus.top", "animex.pro"]);
+});
+
+test("fetches matching public title pages and filters external or direct-media links", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestedUrl;
+  globalThis.fetch = async (input) => {
+    requestedUrl = new URL(input);
+    return new Response(`<!doctype html><html><body>
+      <a href="/john-wick-2014/">دانلود فیلم John Wick (2014)</a>
+      <a href="/john-wick-chapter-2/">John Wick Chapter 2</a>
+      <a href="https://evil.example/john-wick/">John Wick</a>
+      <a href="/john-wick-stream.m3u8">John Wick stream</a>
+      <a href="/other-film/">Other Film</a>
+      <a href="/category/action/">John Wick</a>
+    </body></html>`, {
+      status: 200,
+      headers: { "content-type": "text/html; charset=utf-8" }
+    });
+  };
+  try {
+    const result = await searchSiteTitles("dorna", "John Wick", 6);
+    assert.equal(requestedUrl.hostname, "dornatv.com");
+    assert.equal(requestedUrl.searchParams.get("s"), "John Wick");
+    assert.equal(result.siteName, "درنا تی‌وی");
+    assert.equal(result.results.length, 2);
+    assert.ok(result.results.every((item) => new URL(item.url).hostname === "dornatv.com"));
+    assert.ok(result.results.some((item) => item.url.endsWith("/john-wick-2014/")));
+    assert.ok(result.results.some((item) => item.url.endsWith("/john-wick-chapter-2/")));
+    assert.ok(result.results.every((item) => !/\.m3u8?($|\?)/i.test(item.url)));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("returns the selected site's search page when no matching title is found", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(
+    '<html><body><a href="/unrelated/">Unrelated movie</a></body></html>',
+    { status: 200, headers: { "content-type": "text/html" } }
+  );
+  try {
+    const result = await searchSiteTitles("movieplus", "John Wick");
+    assert.equal(result.results.length, 0);
+    assert.equal(result.unavailable, false);
+    assert.equal(new URL(result.searchUrl).hostname, "movieplus.top");
+    assert.equal(new URL(result.searchUrl).searchParams.get("s"), "John Wick");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("never follows a site search redirect to another host", async () => {
+  const originalFetch = globalThis.fetch;
+  const requestedHosts = [];
+  globalThis.fetch = async (input) => {
+    requestedHosts.push(new URL(input).hostname);
+    return new Response(null, {
+      status: 302,
+      headers: { location: "https://example.com/redirected" }
+    });
+  };
+  try {
+    const result = await searchSiteTitles("animex", "Naruto");
+    assert.equal(result.results.length, 0);
+    assert.equal(result.unavailable, true);
+    assert.ok(requestedHosts.every((host) => host === "animex.pro"));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("rejects invalid site keys and empty search titles", async () => {
+  await assert.rejects(() => searchSiteTitles("unknown", "John Wick"), /Unsupported site selection/);
+  await assert.rejects(() => searchSiteTitles("dorna", " "), /between 2 and 160 characters/);
 });
