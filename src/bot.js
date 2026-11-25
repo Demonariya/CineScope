@@ -140,7 +140,6 @@ async function handleIncomingKey(env, message, userId, chatId) {
       model_unavailable: "The configured Gemini model is unavailable or does not support generateContent. Check GEMINI_MODEL in Cloudflare Worker settings.",
       base_url_missing: "The bot owner has not configured AI_API_BASE_URL.",
       empty_response: "Gemini accepted the request but returned no text.",
-      network_error: "The AI provider could not be reached after automatic retries.",
     };
     const reason = messages[validation.reason] || `اعتبارسنجی سرویس‌دهنده ناموفق بود${validation.status ? ` (HTTP ${validation.status})` : ""}.`;
     const detail = validation.reason ? `\nکد خطا: ${validation.reason}${validation.status ? ` (HTTP ${validation.status})` : ""}` : "";
