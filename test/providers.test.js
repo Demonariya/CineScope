@@ -396,3 +396,24 @@ test("does not retry provider quota responses as generic 503 outages", async () 
     globalThis.fetch = originalFetch;
   }
 });
+
+
+test("keeps Gemini validation available as a service-unavailable error during HTTP 503", async () => {
+  const originalFetch = globalThis.fetch;
+  let attempts = 0;
+  globalThis.fetch = async () => {
+    attempts += 1;
+    return new Response(JSON.stringify({
+      error: { code: 503, status: "UNAVAILABLE", message: "Model is temporarily overloaded." }
+    }), { status: 503, headers: { "content-type": "application/json" } });
+  };
+  try {
+    const result = await validateGeminiKey("test-gemini-key", {});
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "service_unavailable");
+    assert.equal(result.status, 503);
+    assert.equal(attempts, 3);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
