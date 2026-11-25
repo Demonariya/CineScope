@@ -4,6 +4,7 @@ export const MAIN_KEYBOARD = {
     [{ text: "📰 اخبار سینما" }, { text: "🔥 ترندها" }],
     [{ text: "📚 فهرست تماشا" }, { text: "🤖 پرسش از هوش مصنوعی" }],
     [{ text: "🔑 کلیدهای API من" }, { text: "🗂 اطلاعات سایت" }],
+    [{ text: "🔗 دریافت لینک از سایت‌ها" }],
     [{ text: "❔ راهنما" }]
   ],
   resize_keyboard: true,
