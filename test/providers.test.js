@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   mapOmdbSearchItem, mapOmdbTitle, mapOmdbSeason,
-  searchTitles, getTitle, getSeason, getSourceMetadata, validateGeminiKey,
+  searchTitles, getTitle, getSeason, getSourceMetadata, validateGeminiKey, askGemini,
   getSiteLinkSources, searchSiteTitles
 } from "../src/providers.js";
 
@@ -333,4 +333,66 @@ test("never follows a site search redirect to another host", async () => {
 test("rejects invalid site keys and empty search titles", async () => {
   await assert.rejects(() => searchSiteTitles("unknown", "John Wick"), /Unsupported site selection/);
   await assert.rejects(() => searchSiteTitles("dorna", " "), /between 2 and 160 characters/);
+});
+
+
+test("retries transient Gemini 503 responses and succeeds when the provider recovers", async () => {
+  const originalFetch = globalThis.fetch;
+  let attempts = 0;
+  globalThis.fetch = async () => {
+    attempts += 1;
+    if (attempts < 3) return new Response(JSON.stringify({
+      error: { code: 503, status: "UNAVAILABLE", message: "Service temporarily unavailable." }
+    }), { status: 503, headers: { "content-type": "application/json" } });
+    return new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: "پاسخ آزمایشی" }] } }]
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    const result = await askGemini({ GEMINI_MODEL: "gemini-test-model" }, "test-key", "سلام");
+    assert.equal(result, "پاسخ آزمایشی");
+    assert.equal(attempts, 3);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("classifies persistent Gemini 503 as service unavailable, not invalid key", async () => {
+  const originalFetch = globalThis.fetch;
+  let attempts = 0;
+  globalThis.fetch = async () => {
+    attempts += 1;
+    return new Response(JSON.stringify({
+      error: { code: 503, status: "UNAVAILABLE", message: "Service unavailable." }
+    }), { status: 503, headers: { "content-type": "application/json" } });
+  };
+  try {
+    await assert.rejects(
+      () => askGemini({ GEMINI_MODEL: "gemini-test-model" }, "test-key", "سلام"),
+      (error) => error.code === "SERVICE_UNAVAILABLE" && error.status === 503
+    );
+    assert.equal(attempts, 3);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("does not retry provider quota responses as generic 503 outages", async () => {
+  const originalFetch = globalThis.fetch;
+  let attempts = 0;
+  globalThis.fetch = async () => {
+    attempts += 1;
+    return new Response(JSON.stringify({
+      error: { code: 429, status: "RESOURCE_EXHAUSTED", message: "Quota exceeded." }
+    }), { status: 429, headers: { "content-type": "application/json" } });
+  };
+  try {
+    await assert.rejects(
+      () => askGemini({ GEMINI_MODEL: "gemini-test-model" }, "test-key", "سلام"),
+      (error) => error.code === "RATE_LIMITED"
+    );
+    assert.equal(attempts, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
