@@ -53,6 +53,7 @@ async function showHelp(env, chatId) {
     "🤖 Ask AI — ask a film or TV question with your API key",
     "🔑 My API keys — add and manage your own provider keys",
     "🗂 Site metadata — read public metadata from an allowed title page URL",
+    "🔗 Search site links — send a title, choose a site and open a matching title page",
     "",
     "<b>Privacy</b>",
     "Your AI API keys are encrypted before storage. OMDb uses a separate bot-owner secret. When you submit a key, CineScope attempts to delete that Telegram message immediately. Telegram bots are not end-to-end encrypted, so use a private chat and do not share keys in groups."
