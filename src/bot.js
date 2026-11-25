@@ -135,9 +135,12 @@ async function handleIncomingKey(env, message, userId, chatId) {
       api_restricted: "This API key is restricted from using the Gemini API. Check the API restrictions attached to the key.",
       permission_denied: "Google returned a permission error for this generation request. Check the project's Gemini API access and model eligibility.",
       rate_limited: "The provider rate-limited this key. Try again after the quota window resets.",
+      service_unavailable: "The AI service is temporarily unavailable (HTTP 503). CineScope retried automatically, but the provider remained unavailable. This does not mean your API key is invalid.",
+      network_error: "CineScope could not reach the AI provider after automatic retries. Check the connection and try again.",
       model_unavailable: "The configured Gemini model is unavailable or does not support generateContent. Check GEMINI_MODEL in Cloudflare Worker settings.",
       base_url_missing: "The bot owner has not configured AI_API_BASE_URL.",
       empty_response: "Gemini accepted the request but returned no text.",
+      network_error: "The AI provider could not be reached after automatic retries.",
     };
     const reason = messages[validation.reason] || `اعتبارسنجی سرویس‌دهنده ناموفق بود${validation.status ? ` (HTTP ${validation.status})` : ""}.`;
     const detail = validation.reason ? `\nکد خطا: ${validation.reason}${validation.status ? ` (HTTP ${validation.status})` : ""}` : "";
@@ -266,9 +269,13 @@ async function handleGeminiError(env, chatId, userId, key, error) {
     PERMISSION_DENIED: "این پروژه یا کلید مجوز استفاده از مدل هوش مصنوعی را ندارد.",
     PROJECT_DENIED: "دسترسی پروژه به سرویس هوش مصنوعی رد شده است.",
     MODEL_UNAVAILABLE: "مدل هوش مصنوعی تنظیم‌شده در دسترس نیست یا از این درخواست پشتیبانی نمی‌کند.",
+    SERVICE_UNAVAILABLE: "سرویس هوش مصنوعی موقتاً در دسترس نیست و چند بار تلاش مجدد هم موفق نشد. کمی بعد دوباره امتحان کن؛ این خطا به معنی نامعتبر بودن کلید API نیست.",
+    NETWORK_ERROR: "ارتباط شبکه با سرویس هوش مصنوعی برقرار نشد. اتصال را بررسی کن و کمی بعد دوباره تلاش کن.",
     GEMINI_API_ERROR: "در ارتباط با سرویس هوش مصنوعی خطایی رخ داد."
   };
-  const message = messages[error.code] || "در اجرای درخواست هوش مصنوعی خطایی رخ داد. تنظیمات سرویس و اتصال را بررسی کنید.";
+  const message = messages[error.code] || (error.code === "TELEGRAM_SERVICE_UNAVAILABLE"
+    ? "سرویس تلگرام موقتاً در دسترس نیست. ربات پس از مدت کوتاهی دوباره تلاش می‌کند."
+    : "در اجرای درخواست هوش مصنوعی خطایی رخ داد. تنظیمات سرویس و اتصال را بررسی کنید.");
   await reply(env, chatId, `❌ ${message}\n\nبرای مدیریت کلیدها از بخش «کلیدهای API من» استفاده کنید.`, inline([[{ text: "مدیریت کلیدهای API", callback_data: "key:list" }]]));
 }
 
