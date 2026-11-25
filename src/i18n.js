@@ -168,7 +168,10 @@ const translations = [
   ["That action is not supported. Use the menu buttons.", "این عملیات پشتیبانی نمی‌شود. از دکمه‌های منو استفاده کنید."],
   ["Search for a title first.", "ابتدا یک عنوان جست‌وجو کنید."],
   ["Watchlist cleared.", "فهرست تماشا پاک شد."],
-  ["Key not found.", "کلید پیدا نشد."]
+  ["Key not found.", "کلید پیدا نشد."],
+  ["The AI service is temporarily unavailable (HTTP 503). CineScope retried automatically, but the provider remained unavailable. This does not mean your API key is invalid.", "سرویس هوش مصنوعی موقتاً در دسترس نیست (HTTP 503). ربات به‌صورت خودکار دوباره تلاش کرد، اما سرویس‌دهنده همچنان پاسخ نداد. این خطا به معنی نامعتبر بودن کلید API نیست."],
+  ["CineScope could not reach the AI provider after automatic retries. Check the connection and try again.", "پس از تلاش مجدد خودکار، ارتباط با سرویس هوش مصنوعی برقرار نشد. اتصال را بررسی کنید و دوباره تلاش کنید."],
+  ["The AI provider could not be reached after automatic retries.", "پس از تلاش مجدد خودکار، دسترسی به سرویس هوش مصنوعی ممکن نشد."],
 ];
 
 const sortedTranslations = translations
