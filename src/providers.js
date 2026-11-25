@@ -1,4 +1,5 @@
 import { escapeHtml, shortText } from "./ui.js";
+import { fetchWithRetry } from "./http.js";
 
 const OMDB_BASE = "https://www.omdbapi.com/";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
@@ -13,7 +14,7 @@ async function omdb(env, params = {}) {
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
   }
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     headers: { accept: "application/json" },
     signal: AbortSignal.timeout(12000)
   });
@@ -139,7 +140,7 @@ export async function askGemini(env, apiKey, prompt) {
   if (mode === "responses") {
     if (!env.AI_API_BASE_URL) throw new Error("AI_API_BASE_URL is required when AI_API_MODE=responses");
     const base = String(env.AI_API_BASE_URL).replace(/\/+$/, "");
-    const response = await fetch(`${base}/responses`, {
+    const response = await fetchWithRetry(`${base}/responses`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -148,18 +149,12 @@ export async function askGemini(env, apiKey, prompt) {
       },
       body: JSON.stringify({ model, input: prompt, stream: true })
     });
-    if (response.status === 429) {
-      const error = new Error("The provider rate-limited this key. Wait for its quota window to reset or select another key you own.");
-      error.code = "RATE_LIMITED";
-      throw error;
-    }
-    if (response.status === 401 || response.status === 403) {
-      const error = new Error("The provider rejected this key. Check its permissions or replace it.");
-      error.code = "INVALID_KEY";
-      throw error;
-    }
     const raw = await response.text();
-    if (!response.ok) throw new Error(raw.slice(0, 700) || `Responses API request failed (${response.status})`);
+    if (!response.ok) {
+      let data = {};
+      try { data = JSON.parse(raw); } catch { data = { error: { message: raw.slice(0, 500) } }; }
+      throw createGeminiRequestError(response.status, data);
+    }
     let text = "";
     if (raw.trimStart().startsWith("{")) {
       const data = JSON.parse(raw);
@@ -187,7 +182,7 @@ export async function askGemini(env, apiKey, prompt) {
     return text;
   }
 
-  const response = await fetch(`${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`, {
+  const response = await fetchWithRetry(`${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -219,6 +214,7 @@ function classifyGeminiFailure(status, data = {}) {
   const reasons = details.map((item) => String(item?.reason || "")).filter(Boolean);
   const diagnostic = (reasons.join(" ") + " " + message).toLowerCase();
 
+  if ([500, 502, 503, 504].includes(status)) return { ok: false, reason: "service_unavailable", status, message };
   if (status === 429) return { ok: false, reason: "rate_limited", status, message };
   if (/access_token_type_unsupported/.test(diagnostic)) {
     return { ok: false, reason: "auth_key_rejected", status, message };
@@ -248,7 +244,8 @@ function createGeminiRequestError(status, data = {}) {
     api_restricted: "PERMISSION_DENIED",
     project_denied: "PROJECT_DENIED",
     permission_denied: "PERMISSION_DENIED",
-    model_unavailable: "MODEL_UNAVAILABLE"
+    model_unavailable: "MODEL_UNAVAILABLE",
+    service_unavailable: "SERVICE_UNAVAILABLE"
   };
   const message = failure.message || `Gemini API request failed (HTTP ${status}).`;
   const error = new Error(`${message} (HTTP ${status})`);
@@ -263,7 +260,7 @@ export async function validateGeminiKey(apiKey, env) {
   if (mode === "responses") {
     if (!env.AI_API_BASE_URL) return { ok: false, reason: "base_url_missing" };
     const base = String(env.AI_API_BASE_URL).replace(/\/+$/, "");
-    const response = await fetch(`${base}/models`, {
+    const response = await fetchWithRetry(`${base}/models`, {
       headers: { authorization: `Bearer ${apiKey}` }
     });
     if (!response.ok) {
@@ -276,7 +273,7 @@ export async function validateGeminiKey(apiKey, env) {
   // Test the real generation endpoint. models.list can succeed even when
   // the Google project is not permitted to call generateContent.
   const model = String(env.GEMINI_MODEL || "gemini-4-hydrogen").trim();
-  const response = await fetch(`${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`, {
+  const response = await fetchWithRetry(`${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
     body: JSON.stringify({
@@ -310,7 +307,7 @@ export async function searchNews(title, rawQuery = false, language = "fa") {
   url.searchParams.set("hl", isPersian ? "fa" : "en-US");
   url.searchParams.set("gl", isPersian ? "IR" : "US");
   url.searchParams.set("ceid", isPersian ? "IR:fa" : "US:en");
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     headers: { accept: "application/rss+xml, application/xml, text/xml" },
     signal: AbortSignal.timeout(12000)
   });
@@ -420,7 +417,7 @@ function validateSourceUrl(url) {
 async function fetchSourcePage(startUrl) {
   let current = startUrl;
   for (let hop = 0; hop <= 2; hop += 1) {
-    const response = await fetch(current, {
+    const response = await fetchWithRetry(current, {
       method: "GET",
       redirect: "manual",
       headers: { accept: "text/html,application/xhtml+xml" },
@@ -553,7 +550,7 @@ function extractSiteSearchResults(html, searchUrl, query, limit = 6) {
 async function fetchSiteSearchPage(startUrl, expectedHost) {
   let current = startUrl;
   for (let hop = 0; hop <= 2; hop += 1) {
-    const response = await fetch(current, {
+    const response = await fetchWithRetry(current, {
       method: "GET",
       redirect: "manual",
       headers: { accept: "text/html,application/xhtml+xml" },
