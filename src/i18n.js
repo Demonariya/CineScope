@@ -190,6 +190,7 @@ export function normalizeInput(value = "") {
     ["🤖 پرسش از هوش مصنوعی", "🤖 Ask AI"],
     ["🔑 کلیدهای API من", "🔑 My API keys"],
     ["🗂 اطلاعات سایت", "🗂 Site metadata"],
+    ["🔗 دریافت لینک از سایت‌ها", "🔗 Search site links"],
     ["🌐 Language / زبان", "/language"],
     ["🌐 زبان", "/language"],
     ["🌐 زبان / زبان", "/language"],
