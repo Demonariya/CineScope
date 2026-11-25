@@ -11,7 +11,8 @@ import { languageFromTelegram, localizeMarkup, normalizeInput, translateText } f
 import {
   askGemini, formatTitleDetails, getSeason,
   getTitle, posterUrl, safeNewsText, searchNews, searchTitles, titleName,
-  validateGeminiKey, getSourceMetadata, formatSourceMetadata, searchTrendingNews
+  validateGeminiKey, getSourceMetadata, formatSourceMetadata, searchTrendingNews,
+  getSiteLinkSources, searchSiteTitles
 } from "./providers.js";
 
 const MAX_CALLBACK_RESULTS = 6;
@@ -413,6 +414,70 @@ async function handleSourceUrl(env, chatId, userId, rawUrl, expectedTitle = "") 
   }
 }
 
+async function showSiteSourcePicker(env, chatId, query) {
+  const sites = getSiteLinkSources();
+  const rows = sites.map((site) => [{
+    text: site.key === "dorna" ? "🎬 درنا تی‌وی" : site.key === "movieplus" ? "🎞 MoviePlus" : "🎌 AnimeX",
+    callback_data: `site:pick:${site.key}`
+  }]);
+  rows.push([{ text: "⬅️ منوی اصلی", callback_data: "menu" }]);
+  await reply(
+    env,
+    chatId,
+    `عنوان «<b>${escapeHtml(query)}</b>» ثبت شد. حالا سایتی را که می‌خواهی در آن جست‌وجو شود انتخاب کن:`,
+    inline(rows)
+  );
+}
+
+async function runSiteLinkSearch(env, chatId, userId, siteKey) {
+  const flow = await getFlow(env, userId);
+  if (flow?.type !== "site_link_source" || !flow.query) {
+    await reply(env, chatId, "ابتدا نام فیلم یا سریال را ارسال کن.", inline([[{ text: "شروع جست‌وجو", callback_data: "site:start" }]]));
+    return;
+  }
+
+  const query = String(flow.query);
+  await reply(env, chatId, `در حال جست‌وجوی «<b>${escapeHtml(query)}</b>» در سایت انتخاب‌شده…`, MAIN_KEYBOARD);
+
+  let response;
+  try {
+    response = await searchSiteTitles(siteKey, query, 6);
+  } catch (error) {
+    console.error("Site title search failed", { siteKey, message: error.message });
+    await reply(env, chatId, "جست‌وجوی سایت با خطا روبه‌رو شد. می‌توانی صفحه نتایج جست‌وجوی همان سایت را مستقیم باز کنی.", inline([
+      [{ text: "باز کردن نتایج جست‌وجو", url: siteSearchFallbackUrl(siteKey, query) }],
+      [{ text: "انتخاب سایت دیگر", callback_data: "site:back" }]
+    ]));
+    return;
+  }
+
+  const rows = response.results.map((item, index) => [{
+    text: `${index + 1}. ${shortText(item.title, 52)}`,
+    url: item.url
+  }]);
+  if (response.searchUrl) {
+    rows.push([{ text: "🔎 باز کردن صفحه نتایج سایت", url: response.searchUrl }]);
+  }
+  rows.push([{ text: "🔄 جست‌وجو در سایت دیگر", callback_data: "site:back" }]);
+  rows.push([{ text: "⬅️ منوی اصلی", callback_data: "menu" }]);
+
+  const status = response.results.length
+    ? `<b>${escapeHtml(response.siteName)}</b>\n${response.results.length} صفحه مرتبط برای «<b>${escapeHtml(query)}</b>» پیدا شد. لینک‌ها به صفحه عنوان‌ها باز می‌شوند.`
+    : response.unavailable
+      ? `واکشی خودکار نتایج از <b>${escapeHtml(response.siteName)}</b> ممکن نشد. صفحه جست‌وجوی سایت را باز کن تا نتیجه را ببینی.`
+      : `عنوان منطبق در <b>${escapeHtml(response.siteName)}</b> پیدا نشد. صفحه جست‌وجوی سایت را برای بررسی دستی باز کن.`;
+
+  await reply(env, chatId, status, inline(rows));
+}
+
+function siteSearchFallbackUrl(siteKey, query) {
+  const site = getSiteLinkSources().find((item) => item.key === siteKey);
+  if (!site) return "https://dornatv.com/";
+  const url = new URL(`https://${site.host}/`);
+  url.searchParams.set("s", query);
+  return url.href;
+}
+
 async function saveToWatchlist(env, chatId, userId, kind, id) {
   const item = await getTitle(env, kind, id);
   const user = await getUser(env, userId);
@@ -467,7 +532,7 @@ async function handleMessage(env, message) {
   if (text === "/language" || text === "/lang") { await clearFlow(env, userId); return showLanguageSettings(env, chatId); }
   if (text.startsWith("/help") || text === "❔ Help" || text === "❔ راهنما") return showHelp(env, chatId);
 
-  const menuActions = new Set(["🔎 Search movie", "📺 Search series", "📰 Cinema news", "🔥 Trending", "📚 Watchlist", "🤖 Ask AI", "🔑 My API keys", "🗂 Site metadata"]);
+  const menuActions = new Set(["🔎 Search movie", "📺 Search series", "📰 Cinema news", "🔥 Trending", "📚 Watchlist", "🤖 Ask AI", "🔑 My API keys", "🗂 Site metadata", "🔗 Search site links"]);
   const flow = await getFlow(env, userId);
   if (menuActions.has(text)) await clearFlow(env, userId);
   if (!menuActions.has(text)) {
@@ -485,6 +550,10 @@ async function handleMessage(env, message) {
       return showNews(env, chatId, userId, text);
     }
     if (flow?.type === "source_url") return handleSourceUrl(env, chatId, userId, text, flow.expectedTitle || "");
+    if (flow?.type === "site_link_title") {
+      await setFlow(env, userId, { type: "site_link_source", query: text }, 600);
+      return showSiteSourcePicker(env, chatId, text);
+    }
     if (flow?.type === "ai") {
       await clearFlow(env, userId);
       const user = await getUser(env, userId);
@@ -524,6 +593,9 @@ async function handleMessage(env, message) {
     await showKeys(env, chatId, userId);
   } else if (text === "🗂 Site metadata") {
     await beginSourceLookup(env, chatId, userId);
+  } else if (text === "🔗 Search site links") {
+    await setFlow(env, userId, { type: "site_link_title" }, 600);
+    await reply(env, chatId, "نام فیلم یا سریال را برای پیدا کردن لینک صفحه آن در سایت‌های موردنظر ارسال کن.", CANCEL_KEYBOARD);
   } else {
     await runSearch(env, chatId, userId, text, "all");
   }
@@ -562,6 +634,18 @@ async function handleCallback(env, callback) {
   try {
     if (data === "menu") { await clearFlow(env, userId); return showMenu(env, chatId); }
     if (data === "language") { await clearFlow(env, userId); return showLanguageSettings(env, chatId); }
+    if (data === "site:start") {
+      await setFlow(env, userId, { type: "site_link_title" }, 600);
+      return reply(env, chatId, "نام فیلم یا سریال را ارسال کن.", CANCEL_KEYBOARD);
+    }
+    if (data === "site:back") {
+      const flow = await getFlow(env, userId);
+      if (flow?.type !== "site_link_source" || !flow.query) return reply(env, chatId, "ابتدا نام فیلم یا سریال را ارسال کن.", MAIN_KEYBOARD);
+      return showSiteSourcePicker(env, chatId, flow.query);
+    }
+    if (action === "site" && parts[1] === "pick") {
+      return runSiteLinkSearch(env, chatId, userId, parts[2]);
+    }
     if (action === "lang" && (parts[1] === "fa" || parts[1] === "en")) {
       await clearFlow(env, userId);
       const user = await getUser(env, userId);
