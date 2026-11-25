@@ -124,6 +124,17 @@ export async function getSeason(env, imdbId, seasonNumber) {
   return mapOmdbSeason(data, seasonNumber);
 }
 
+async function fetchAiProvider(input, init) {
+  try {
+    return await fetchWithRetry(input, init, { attempts: 3, baseDelayMs: 300, maxDelayMs: 1200 });
+  } catch (cause) {
+    const error = new Error("AI provider connection failed after automatic retries.");
+    error.code = "NETWORK_ERROR";
+    error.cause = cause;
+    throw error;
+  }
+}
+
 function extractResponseText(data = {}) {
   if (typeof data.output_text === "string" && data.output_text.trim()) return data.output_text;
   const blocks = (data.output || []).flatMap((item) => item.content || []);
@@ -140,7 +151,7 @@ export async function askGemini(env, apiKey, prompt) {
   if (mode === "responses") {
     if (!env.AI_API_BASE_URL) throw new Error("AI_API_BASE_URL is required when AI_API_MODE=responses");
     const base = String(env.AI_API_BASE_URL).replace(/\/+$/, "");
-    const response = await fetchWithRetry(`${base}/responses`, {
+    const response = await fetchAiProvider(`${base}/responses`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -182,7 +193,7 @@ export async function askGemini(env, apiKey, prompt) {
     return text;
   }
 
-  const response = await fetchWithRetry(`${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`, {
+  const response = await fetchAiProvider(`${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -260,7 +271,7 @@ export async function validateGeminiKey(apiKey, env) {
   if (mode === "responses") {
     if (!env.AI_API_BASE_URL) return { ok: false, reason: "base_url_missing" };
     const base = String(env.AI_API_BASE_URL).replace(/\/+$/, "");
-    const response = await fetchWithRetry(`${base}/models`, {
+    const response = await fetchAiProvider(`${base}/models`, {
       headers: { authorization: `Bearer ${apiKey}` }
     });
     if (!response.ok) {
@@ -273,7 +284,7 @@ export async function validateGeminiKey(apiKey, env) {
   // Test the real generation endpoint. models.list can succeed even when
   // the Google project is not permitted to call generateContent.
   const model = String(env.GEMINI_MODEL || "gemini-4-hydrogen").trim();
-  const response = await fetchWithRetry(`${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`, {
+  const response = await fetchAiProvider(`${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
     body: JSON.stringify({
