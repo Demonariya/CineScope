@@ -514,7 +514,8 @@ function safeContentLink(rawHref, baseUrl) {
   if (url.username || url.password || (url.port && url.port !== "443")) return null;
   const path = url.pathname.toLowerCase();
   if (!path || path === "/" || /\.(?:m3u8?|mpd|mp4|m4v|mkv|avi|mov|mp3|zip|rar|7z|pdf|jpe?g|png|webp|gif|vtt|srt)$/i.test(path)) return null;
-  if (/\/(?:wp-admin|wp-login|wp-json|feed|tag|category|author|search|page|embed|player|watch)(?:\/|$)/i.test(path)) return null;
+  if (/\/(?:wp-admin|wp-login|wp-json|feed|tag|category|author|search|page|embed|player|play|stream|watch|download)(?:\/|$)/i.test(path)) return null;
+  if (["url", "src", "file", "download", "stream", "playlist"].some((key) => url.searchParams.has(key))) return null;
   url.hash = "";
   return url.href;
 }
