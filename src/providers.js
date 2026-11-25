@@ -126,7 +126,7 @@ export async function getSeason(env, imdbId, seasonNumber) {
 
 async function fetchAiProvider(input, init) {
   try {
-    return await fetchWithRetry(input, init, { attempts: 3, baseDelayMs: 300, maxDelayMs: 1200 });
+    return await fetchWithRetry(input, init, { attempts: 3, baseDelayMs: 1000, maxDelayMs: 2500 });
   } catch (cause) {
     const error = new Error("AI provider connection failed after automatic retries.");
     error.code = "NETWORK_ERROR";
