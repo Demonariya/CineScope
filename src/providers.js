@@ -481,6 +481,152 @@ export async function getSourceMetadata(rawUrl) {
   };
 }
 
+const SITE_LINK_SOURCES = Object.freeze({
+  dorna: { name: "درنا تی‌وی", host: "dornatv.com" },
+  movieplus: { name: "MoviePlus", host: "movieplus.top" },
+  animex: { name: "AnimeX", host: "animex.pro" }
+});
+
+function normalizeSearchText(value = "") {
+  return String(value)
+    .toLocaleLowerCase()
+    .replace(/[يى]/g, "ی")
+    .replace(/ك/g, "ک")
+    .replace(/[\u064b-\u065f\u0670]/g, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+function titleMatchScore(title, query) {
+  const normalizedTitle = normalizeSearchText(title);
+  const terms = normalizeSearchText(query).split(/\s+/).filter((term) => term.length > 1);
+  if (!normalizedTitle || !terms.length) return 0;
+  const matched = terms.filter((term) => normalizedTitle.includes(term)).length;
+  const required = terms.length <= 2 ? terms.length : Math.ceil(terms.length * 0.6);
+  return matched >= required ? matched / terms.length : 0;
+}
+
+function safeContentLink(rawHref, baseUrl) {
+  let url;
+  try { url = new URL(decodeHtml(rawHref), baseUrl); }
+  catch { return null; }
+  if (url.protocol !== "https:" || url.hostname.toLowerCase() !== baseUrl.hostname.toLowerCase()) return null;
+  if (url.username || url.password || (url.port && url.port !== "443")) return null;
+  const path = url.pathname.toLowerCase();
+  if (!path || path === "/" || /\.(?:m3u8?|mpd|mp4|m4v|mkv|avi|mov|mp3|zip|rar|7z|pdf|jpe?g|png|webp|gif|vtt|srt)$/i.test(path)) return null;
+  if (/\/(?:wp-admin|wp-login|wp-json|feed|tag|category|author|search|page|embed|player|watch)(?:\/|$)/i.test(path)) return null;
+  url.hash = "";
+  return url.href;
+}
+
+function extractSiteSearchResults(html, searchUrl, query, limit = 6) {
+  const results = [];
+  const seen = new Set();
+  const anchorPattern = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
+  for (const match of html.matchAll(anchorPattern)) {
+    const attributes = match[1] || "";
+    const href = attributes.match(/\bhref\s*=\s*(["'])(.*?)\1/i)?.[2];
+    if (!href) continue;
+    const url = safeContentLink(href, searchUrl);
+    if (!url || seen.has(url)) continue;
+    const titleAttribute = attributes.match(/\btitle\s*=\s*(["'])(.*?)\1/i)?.[2] || "";
+    const anchorText = decodeHtml((match[2] || "")
+      .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/gi, " "))
+      .replace(/\s+/g, " ")
+      .trim();
+    const title = shortText(decodeHtml(titleAttribute) || anchorText, 160);
+    const score = titleMatchScore(title, query);
+    if (!title || score <= 0) continue;
+    seen.add(url);
+    results.push({ title, url, score });
+  }
+  return results
+    .sort((a, b) => b.score - a.score || a.title.length - b.title.length)
+    .slice(0, Math.max(1, Math.min(10, limit)))
+    .map(({ title, url }) => ({ title, url }));
+}
+
+async function fetchSiteSearchPage(startUrl, expectedHost) {
+  let current = startUrl;
+  for (let hop = 0; hop <= 2; hop += 1) {
+    const response = await fetch(current, {
+      method: "GET",
+      redirect: "manual",
+      headers: { accept: "text/html,application/xhtml+xml" },
+      signal: AbortSignal.timeout(9000)
+    });
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      const location = response.headers.get("location");
+      if (!location || hop === 2) throw new Error("Search page redirected too many times.");
+      const next = new URL(location, current);
+      if (next.protocol !== "https:" || next.hostname.toLowerCase() !== expectedHost) {
+        throw new Error("Search page redirected outside its selected site.");
+      }
+      current = next;
+      continue;
+    }
+    if (!response.ok) throw new Error(`Site search failed (HTTP ${response.status}).`);
+    const contentType = response.headers.get("content-type") || "";
+    if (!/text\/html|application\/xhtml\+xml/i.test(contentType)) {
+      throw new Error("The selected site did not return an HTML search page.");
+    }
+    const declaredLength = Number(response.headers.get("content-length") || 0);
+    if (declaredLength > 3_000_000) throw new Error("The site search page is larger than the 3 MB limit.");
+    const html = (await response.text()).slice(0, 3_000_000);
+    return { html, finalUrl: new URL(current) };
+  }
+  throw new Error("The selected site's search page could not be loaded safely.");
+}
+
+export function getSiteLinkSources() {
+  return Object.entries(SITE_LINK_SOURCES).map(([key, site]) => ({ key, ...site }));
+}
+
+export async function searchSiteTitles(siteKey, query, limit = 6) {
+  const site = SITE_LINK_SOURCES[String(siteKey || "")];
+  const normalizedQuery = String(query || "").trim();
+  if (!site) throw new Error("Unsupported site selection.");
+  if (normalizedQuery.length < 2 || normalizedQuery.length > 160) {
+    throw new Error("Search title must contain between 2 and 160 characters.");
+  }
+
+  const root = new URL(`https://${site.host}/`);
+  const strategies = [
+    (url) => { url.searchParams.set("s", normalizedQuery); },
+    (url) => { url.pathname = "/search/"; url.searchParams.set("q", normalizedQuery); },
+    (url) => { url.pathname = `/search/${encodeURIComponent(normalizedQuery)}/`; }
+  ];
+  let fallbackUrl = null;
+  let lastError = null;
+
+  for (const buildSearchUrl of strategies) {
+    const searchUrl = new URL(root);
+    buildSearchUrl(searchUrl);
+    fallbackUrl ||= searchUrl.href;
+    try {
+      const { html, finalUrl } = await fetchSiteSearchPage(searchUrl, site.host);
+      const results = extractSiteSearchResults(html, finalUrl, normalizedQuery, limit);
+      if (results.length) {
+        return { siteKey, siteName: site.name, query: normalizedQuery, searchUrl: finalUrl.href, results };
+      }
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  return {
+    siteKey,
+    siteName: site.name,
+    query: normalizedQuery,
+    searchUrl: fallbackUrl,
+    results: [],
+    unavailable: Boolean(lastError)
+  };
+}
+
 export function formatSourceMetadata(item, expectedTitle = "") {
   const lines = [
     `<b>🗂 Source-page metadata</b>`,
