@@ -1,18 +1,33 @@
 import { localizeMarkup, translateText } from "./i18n.js";
+import { fetchWithRetry } from "./http.js";
 
 const API = "https://api.telegram.org";
 
 export async function telegram(env, method, payload = {}) {
   if (!env.BOT_TOKEN) throw new Error("BOT_TOKEN is not configured");
-  const response = await fetch(`${API}/bot${env.BOT_TOKEN}/${method}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload)
-  });
+  let response;
+  try {
+    response = await fetchWithRetry(`${API}/bot${env.BOT_TOKEN}/${method}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10000)
+    }, { attempts: 3, baseDelayMs: 200, maxDelayMs: 900 });
+  } catch (cause) {
+    const error = new Error("Telegram API connection failed after retries.");
+    error.code = "TELEGRAM_NETWORK_ERROR";
+    error.cause = cause;
+    throw error;
+  }
   const result = await response.json().catch(() => ({}));
   if (!response.ok || !result.ok) {
     const description = result.description || `Telegram API error (${response.status})`;
-    throw new Error(description);
+    const error = new Error(description);
+    error.code = response.status === 503 || response.status === 502 || response.status === 504
+      ? "TELEGRAM_SERVICE_UNAVAILABLE"
+      : response.status === 429 ? "TELEGRAM_RATE_LIMITED" : "TELEGRAM_API_ERROR";
+    error.status = response.status;
+    throw error;
   }
   return result.result;
 }
