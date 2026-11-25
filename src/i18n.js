@@ -140,6 +140,7 @@ const translations = [
   [" · Series", " · سریال"],
   ["Not exposed by page", "در صفحه ارائه نشده است"],
   ["No structured synopsis was found on this page.", "خلاصه داستان ساختاریافته‌ای در این صفحه پیدا نشد."],
+  ["🔗 Search site links — send a title, choose a site and open a matching title page", "🔗 دریافت لینک از سایت‌ها — نام اثر را بفرستید، سایت را انتخاب کنید و لینک صفحه عنوان را دریافت کنید."],
   ["Buttons", "امکانات"],
   ["Privacy", "حریم خصوصی و امنیت"],
   ["AI gateway", "درگاه هوش مصنوعی"],
