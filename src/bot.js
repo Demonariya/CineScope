@@ -181,7 +181,7 @@ async function testOneKey(env, userId, keyId) {
   const result = await validateGeminiKey(key.secret, env);
   key.status = result.ok ? "ready" : result.reason === "invalid_key" ? "invalid" : result.reason === "rate_limited" ? "rate_limited" : ["auth_key_rejected", "api_restricted", "project_denied", "permission_denied"].includes(result.reason) ? "permission_denied" : "unknown";
   await saveUser(env, userId, user);
-  const status = result.ok ? "✅ معتبر" : key.status === "rate_limited" ? "⏳ محدودیت درخواست" : key.status === "invalid" ? "⚠️ نامعتبر" : key.status === "permission_denied" ? "⛔ بدون دسترسی" : "⚠️ نامشخص";
+  const status = result.ok ? "✅ معتبر" : result.reason === "service_unavailable" ? "⏳ سرویس موقتاً در دسترس نیست" : result.reason === "network_error" ? "⚠️ خطای اتصال" : key.status === "rate_limited" ? "⏳ محدودیت درخواست" : key.status === "invalid" ? "⚠️ نامعتبر" : key.status === "permission_denied" ? "⛔ بدون دسترسی" : "⚠️ نامشخص";
   return `${key.label}: ${status}`;
 }
 
@@ -193,7 +193,7 @@ async function testAllKeys(env, chatId, userId) {
   for (const key of user.keys) {
     const result = await validateGeminiKey(key.secret, env);
     key.status = result.ok ? "ready" : result.reason === "invalid_key" ? "invalid" : result.reason === "rate_limited" ? "rate_limited" : ["auth_key_rejected", "api_restricted", "project_denied", "permission_denied"].includes(result.reason) ? "permission_denied" : "unknown";
-    const state = result.ok ? "✅ معتبر" : key.status === "rate_limited" ? "⏳ محدودیت درخواست" : key.status === "invalid" ? "⚠️ نامعتبر" : key.status === "permission_denied" ? "⛔ بدون دسترسی" : "⚠️ نامشخص";
+    const state = result.ok ? "✅ معتبر" : result.reason === "service_unavailable" ? "⏳ سرویس موقتاً در دسترس نیست" : result.reason === "network_error" ? "⚠️ خطای اتصال" : key.status === "rate_limited" ? "⏳ محدودیت درخواست" : key.status === "invalid" ? "⚠️ نامعتبر" : key.status === "permission_denied" ? "⛔ بدون دسترسی" : "⚠️ نامشخص";
     results.push(`${escapeHtml(key.label)} — ${state}`);
   }
   await saveUser(env, userId, user);
